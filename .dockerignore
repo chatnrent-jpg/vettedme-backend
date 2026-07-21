@@ -1,10 +1,91 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Environment files
 .env
-.venv
-__pycache__
-*.pyc
-.pytest_cache
+.env.local
+.env.development
+.env.test
+.env.production
+.env.*.local
+
+# Git
 .git
 .gitignore
-tests
+.gitattributes
+
+# Documentation
 *.md
-terminals
+!README.md
+docs/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+coverage
+.nyc_output
+*.test.ts
+*.spec.ts
+__tests__
+__mocks__
+
+# Build outputs (will be generated during Docker build)
+dist
+build
+*.tsbuildinfo
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+tmp
+temp
+*.tmp
+
+# Docker
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile*
+.dockerignore
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+.circleci
+
+# Backups
+backups
+*.sql
+*.dump
+*.backup
+
+# Storage (user uploads)
+storage/*
+!storage/.gitkeep
+
+# Database
+*.sqlite
+*.db
+prisma/*.db
+prisma/*.db-journal
+
+# Misc
+.prettierrc
+.eslintrc.js
+.eslintignore
+tsconfig.json
+jest.config.js
+nodemon.json

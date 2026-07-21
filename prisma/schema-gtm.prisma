@@ -1,0 +1,392 @@
+// VETTED - Go-To-Market & Financial Operations Schema
+// Add to main schema.prisma
+
+// ============================================================================
+// B2B LEAD MANAGEMENT & OUTREACH
+// ============================================================================
+
+enum LeadStatus {
+  NEW               // Just discovered
+  CONTACTED         // First touch sent
+  ENGAGED           // Responded to outreach
+  QUALIFIED         // Meets ICP criteria
+  DEMO_SCHEDULED    // Call booked
+  PROPOSAL_SENT     // Contract proposed
+  NEGOTIATING       // Discussing terms
+  CLOSED_WON        // Converted to client
+  CLOSED_LOST       // Did not convert
+  UNRESPONSIVE      // No reply after 4 touches
+}
+
+enum LeadSource {
+  LINKEDIN_SEARCH
+  INBOUND_LANDING
+  REFERRAL
+  CONFERENCE
+  COLD_EMAIL
+  PARTNERSHIP
+}
+
+enum CompanySize {
+  SEED              // <10 employees
+  SERIES_A          // 10-50 employees
+  SERIES_B          // 50-200 employees
+  SERIES_C_PLUS     // 200+ employees
+}
+
+model Lead {
+  id                String        @id @default(uuid())
+  
+  // Contact Information
+  firstName         String
+  lastName          String
+  email             String        @unique
+  linkedInUrl       String?
+  phoneNumber       String?
+  
+  // Company Information
+  companyName       String
+  companySize       CompanySize?
+  companyLinkedIn   String?
+  companyWebsite    String?
+  fundingStage      String?       // "Seed", "Series A", etc.
+  
+  // Lead Qualification
+  title             String        // "CTO", "VP Engineering", etc.
+  status            LeadStatus    @default(NEW)
+  leadSource        LeadSource
+  leadScore         Int           @default(0)  // 0-100
+  
+  // Intent Signals
+  hiringIntentDetected Boolean    @default(false)
+  budgetQualified      Boolean    @default(false)
+  technicalFitScore    Int        @default(0)  // 0-100
+  
+  // Outreach Tracking
+  lastContactedAt      DateTime?
+  nextFollowUpAt       DateTime?
+  touchCount           Int         @default(0)
+  emailsOpened         Int         @default(0)
+  linksClicked         Int         @default(0)
+  
+  // Metadata
+  notes                String?     @db.Text
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  
+  // Relations
+  outreachSequences    OutreachSequence[]
+  deals                Deal[]
+  
+  @@index([status])
+  @@index([leadSource])
+  @@index([companySize])
+  @@index([nextFollowUpAt])
+  @@map("leads")
+}
+
+enum OutreachChannel {
+  LINKEDIN_CONNECTION
+  LINKEDIN_INMAIL
+  EMAIL
+  PHONE
+  TWITTER_DM
+}
+
+enum OutreachStatus {
+  SCHEDULED
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  REPLIED
+  BOUNCED
+  FAILED
+}
+
+model OutreachSequence {
+  id                String          @id @default(uuid())
+  leadId            String
+  lead              Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  
+  // Sequence Configuration
+  sequenceName      String          // "4-Touch Cold Outreach"
+  currentStep       Int             @default(1)
+  totalSteps        Int             @default(4)
+  
+  // Timing
+  startedAt         DateTime        @default(now())
+  completedAt       DateTime?
+  pausedAt          DateTime?
+  
+  // Status
+  status            String          // "ACTIVE", "PAUSED", "COMPLETED"
+  
+  // Relations
+  touches           OutreachTouch[]
+  
+  @@index([leadId])
+  @@map("outreach_sequences")
+}
+
+model OutreachTouch {
+  id                String          @id @default(uuid())
+  sequenceId        String
+  sequence          OutreachSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  
+  // Touch Details
+  stepNumber        Int             // 1, 2, 3, 4
+  channel           OutreachChannel
+  subject           String?
+  messageBody       String          @db.Text
+  
+  // Scheduling
+  scheduledAt       DateTime
+  sentAt            DateTime?
+  
+  // Engagement Tracking
+  status            OutreachStatus  @default(SCHEDULED)
+  openedAt          DateTime?
+  clickedAt         DateTime?
+  repliedAt         DateTime?
+  replyContent      String?         @db.Text
+  
+  // Metadata
+  createdAt         DateTime        @default(now())
+  
+  @@index([sequenceId])
+  @@index([status])
+  @@map("outreach_touches")
+}
+
+// ============================================================================
+// DEAL & PIPELINE MANAGEMENT
+// ============================================================================
+
+enum DealStage {
+  DISCOVERY
+  QUALIFICATION
+  PROPOSAL
+  NEGOTIATION
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+model Deal {
+  id                String          @id @default(uuid())
+  leadId            String
+  lead              Lead            @relation(fields: [leadId], references: [id])
+  
+  // Deal Details
+  dealName          String
+  dealValue         Float           // Expected contract value USD
+  stage             DealStage       @default(DISCOVERY)
+  probability       Int             @default(10)  // 0-100%
+  
+  // Contract Terms
+  contractType      String?         // "FIXED_PRICE", "MILESTONE_BASED"
+  estimatedDuration String?         // "3 months", "6 months"
+  developersNeeded  Int?
+  
+  // Timeline
+  expectedCloseDate DateTime?
+  actualCloseDate   DateTime?
+  
+  // Metadata
+  notes             String?         @db.Text
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  
+  @@index([leadId])
+  @@index([stage])
+  @@map("deals")
+}
+
+// ============================================================================
+// MULTI-CURRENCY LEDGER & FX ARBITRAGE
+// ============================================================================
+
+enum WalletType {
+  BUYER_ESCROW          // Client's virtual account
+  TALENT_PAYOUT         // Developer's receiving account
+  PLATFORM_TREASURY     // VETTED's revenue collection
+  FX_RESERVE           // Currency conversion buffer
+}
+
+enum WalletStatus {
+  ACTIVE
+  FROZEN
+  CLOSED
+}
+
+model MultiCurrencyWallet {
+  id                    String        @id @default(uuid())
+  
+  // Ownership
+  walletType            WalletType
+  ownerId               String        // userId or companyId
+  ownerType             String        // "USER", "COMPANY", "PLATFORM"
+  
+  // Airwallex Integration
+  airwallexWalletId     String        @unique
+  
+  // Balances (per currency)
+  balanceUSD            Float         @default(0)
+  balanceNGN            Float         @default(0)
+  balanceEUR            Float         @default(0)
+  balanceGBP            Float         @default(0)
+  
+  // Reserved Funds (locked for pending transactions)
+  reservedUSD           Float         @default(0)
+  reservedNGN           Float         @default(0)
+  reservedEUR           Float         @default(0)
+  reservedGBP           Float         @default(0)
+  
+  // Metadata
+  status                WalletStatus  @default(ACTIVE)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  
+  // Relations
+  transactions          LedgerTransaction[]
+  
+  @@index([walletType])
+  @@index([ownerId])
+  @@map("multi_currency_wallets")
+}
+
+enum TransactionType {
+  DEPOSIT               // Client funds escrow
+  MILESTONE_LOCK        // Lock funds for milestone
+  TALENT_PAYOUT         // Pay developer
+  PLATFORM_FEE          // VETTED's 15% cut
+  FX_CONVERSION         // Currency exchange
+  FX_SPREAD_CAPTURE     // VETTED's FX markup profit
+  REFUND                // Return funds to client
+  WITHDRAWAL            // Withdraw to external account
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+model LedgerTransaction {
+  id                    String            @id @default(uuid())
+  
+  // Transaction Details
+  transactionType       TransactionType
+  status                TransactionStatus @default(PENDING)
+  
+  // Amount & Currency
+  amount                Float
+  currency              String            // "USD", "NGN", "EUR", "GBP"
+  
+  // Source & Destination
+  sourceWalletId        String?
+  sourceWallet          MultiCurrencyWallet? @relation(fields: [sourceWalletId], references: [id], name: "source")
+  
+  destinationWalletId   String?
+  destinationWallet     MultiCurrencyWallet? @relation(fields: [destinationWalletId], references: [id], name: "destination")
+  
+  // FX Conversion (if applicable)
+  fxSourceCurrency      String?
+  fxSourceAmount        Float?
+  fxDestCurrency        String?
+  fxDestAmount          Float?
+  fxRate                Float?            // Exchange rate used
+  fxSpreadRate          Float?            // VETTED's markup (0.5-1%)
+  fxSpreadAmount        Float?            // Profit from FX
+  
+  // Platform Fee
+  platformFeePercent    Float?            // 15%
+  platformFeeAmount     Float?            // Actual $ captured
+  
+  // Reference
+  contractId            String?
+  milestoneId           String?
+  referenceId           String?           // External transaction ID
+  
+  // Airwallex Integration
+  airwallexPayoutId     String?
+  airwallexTransferId   String?
+  
+  // Metadata
+  description           String?
+  metadata              Json?
+  createdAt             DateTime          @default(now())
+  processedAt           DateTime?
+  
+  @@index([transactionType])
+  @@index([status])
+  @@index([contractId])
+  @@index([milestoneId])
+  @@map("ledger_transactions")
+}
+
+// ============================================================================
+// PLATFORM REVENUE TRACKING
+// ============================================================================
+
+enum RevenueStream {
+  PLATFORM_FEE          // 15% per milestone
+  FX_SPREAD             // 0.5-1% on currency conversion
+  ASSESSMENT_FEE        // $200 per developer verification
+  SUBSCRIPTION          // Monthly SaaS (future)
+  PREMIUM_FEATURES      // Add-ons (future)
+}
+
+model RevenueEntry {
+  id                String        @id @default(uuid())
+  
+  // Revenue Classification
+  revenueStream     RevenueStream
+  amount            Float
+  currency          String        @default("USD")
+  
+  // Source
+  contractId        String?
+  milestoneId       String?
+  userId            String?
+  transactionId     String?
+  
+  // Timing
+  recognizedAt      DateTime      @default(now())
+  settledAt         DateTime?
+  
+  // Metadata
+  description       String?
+  metadata          Json?
+  
+  @@index([revenueStream])
+  @@index([recognizedAt])
+  @@map("revenue_entries")
+}
+
+// ============================================================================
+// TREASURY & FINANCIAL REPORTING
+// ============================================================================
+
+model TreasurySnapshot {
+  id                String        @id @default(uuid())
+  
+  // Balances
+  totalUSD          Float
+  totalNGN          Float
+  totalEUR          Float
+  totalGBP          Float
+  
+  // Revenue Breakdown
+  platformFeesMTD   Float         // Month-to-date
+  fxSpreadMTD       Float
+  assessmentFeesMTD Float
+  
+  // Snapshot Time
+  snapshotDate      DateTime      @default(now())
+  
+  @@index([snapshotDate])
+  @@map("treasury_snapshots")
+}

@@ -1,0 +1,86 @@
+# ============================================================================
+# VETTED Production Deployment Configuration (Railway)
+# ============================================================================
+# 
+# Primary infrastructure provisioning for Railway platform
+# Supports multi-region PostgreSQL clusters and auto-scaling
+# 
+# Usage: railway up
+# ============================================================================
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+# ============================================================================
+# ENVIRONMENT CONFIGURATION
+# ============================================================================
+[environment]
+NODE_ENV = "production"
+PORT = "8080"
+
+# ============================================================================
+# REGIONAL DATABASE ROUTING
+# ============================================================================
+# Primary: US East (Railway auto-provisions)
+# Read Replicas: Lagos, Nairobi, São Paulo
+# Auto-failover enabled
+# ============================================================================
+
+[regions]
+primary = "us-east"
+replicas = ["lagos", "nairobi", "sao-paulo"]
+
+# ============================================================================
+# AUTO-SCALING CONFIGURATION
+# ============================================================================
+[autoscaling]
+enabled = true
+minInstances = 2
+maxInstances = 10
+targetCPU = 70
+targetMemory = 80
+
+# ============================================================================
+# NETWORKING & CDN
+# ============================================================================
+[networking]
+enableCDN = true
+enableIPv6 = true
+corsOrigins = [
+  "https://vetted.ai",
+  "https://vettedme.com",
+  "https://vettedpay.ai"
+]
+
+# ============================================================================
+# HEALTH CHECK CONFIGURATION
+# ============================================================================
+[healthcheck]
+path = "/health"
+interval = 30
+timeout = 10
+retries = 3
+
+# ============================================================================
+# LOGGING & MONITORING
+# ============================================================================
+[observability]
+logs = "json"
+metrics = true
+traces = true
+
+# ============================================================================
+# SECURITY
+# ============================================================================
+[security]
+enableHSTS = true
+enableCSP = true
+enableRateLimiting = true

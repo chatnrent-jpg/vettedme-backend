@@ -111,7 +111,7 @@ class RailHealthSchema(BaseModel):
 
 class WaitlistSignupSchema(BaseModel):
     """Waitlist signup request"""
-    email: str = Field(..., regex=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    email: str = Field(..., pattern=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
     full_name: Optional[str] = Field(None, max_length=255)
     organization: Optional[str] = Field(None, max_length=255)
     use_case: Optional[str] = None

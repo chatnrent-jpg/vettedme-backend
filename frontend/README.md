@@ -1,332 +1,150 @@
-# VettedMe Frontend - Next.js Dashboard
+# VETTED Frontend - Dual Portal Application
 
-Beautiful dark-themed dashboard for managing zkTLS credential badges.
+**Next.js 15 + React 19 + TypeScript + Tailwind CSS v4 + shadcn/ui**
 
-## 🎨 Tech Stack
+## 🎯 Dual Portal Structure
 
-- **Next.js 14** - React framework
-- **TypeScript** - Type safety
-- **Tailwind CSS** - Utility-first styling
-- **React** - UI library
+### VettedME Portal (`/talent`)
+**For Nigerian tech professionals**
+- Three-tier verification journey
+- Portfolio audit interface
+- Sandboxed code lab
+- AI technical viva
+- Digital passport display
+- Trust score dashboard
 
-## 🚀 Getting Started
+### VettedPay Portal (`/business`)
+**For Western B2B buyers**
+- Pre-verified talent pool browser
+- Contract creation interface
+- Escrow wallet management
+- Milestone tracking dashboard
+- Payment release controls
 
-### 1. Install Dependencies
+## 🚀 Quick Start
 
 ```bash
-cd frontend
+# Install dependencies
 npm install
-```
 
-### 2. Configure Environment
-
-Create `.env.local`:
-
-```bash
-FASTAPI_BASE_URL=http://localhost:8000
-```
-
-### 3. Run Development Server
-
-```bash
+# Run development server
 npm run dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Visit:
+- Homepage: http://localhost:3000
+- Talent Portal: http://localhost:3000/talent
+- Business Portal: http://localhost:3000/business
 
 ## 📁 Project Structure
 
 ```
 frontend/
-├── components/
-│   └── PassportDashboard.tsx    # Main dashboard component
-├── pages/
-│   ├── api/
-│   │   ├── verify.ts            # Reclaim verification proxy
-│   │   ├── credentials.ts       # Get user credentials
-│   │   └── auth/
-│   │       └── [...auth].ts     # Auth proxy to FastAPI
-│   ├── _app.tsx                 # App wrapper
-│   └── dashboard.tsx            # Dashboard page
-├── styles/
-│   └── globals.css              # Global styles + Tailwind
-├── package.json                 # Dependencies
-├── tailwind.config.js           # Tailwind configuration
-└── next.config.js               # Next.js configuration
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx          # Root layout
+│   │   ├── page.tsx            # Homepage (dual CTA)
+│   │   ├── globals.css         # Tailwind styles
+│   │   ├── talent/             # VettedME portal
+│   │   │   ├── layout.tsx
+│   │   │   ├── page.tsx        # Talent landing
+│   │   │   ├── dashboard/
+│   │   │   ├── assessment/
+│   │   │   └── passport/
+│   │   └── business/           # VettedPay portal
+│   │       ├── layout.tsx
+│   │       ├── page.tsx        # Business landing
+│   │       ├── dashboard/
+│   │       ├── talent/
+│   │       ├── contracts/
+│   │       └── escrow/
+│   └── components/             # Shared components
+│       └── ui/                 # shadcn/ui components
+├── public/
+├── tailwind.config.ts
+├── tsconfig.json
+└── package.json
 ```
 
-## 🔐 Authentication Flow
+## 🎨 Design System
 
-### 1. Register
+### Color Palette
+- **Primary (Blue)**: VettedME branding
+- **Success (Green)**: VettedPay branding
+- **Purple**: Trust scores, verification badges
+- **Slate**: UI chrome, backgrounds
 
-```typescript
-const response = await fetch('/api/auth/register', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    email: 'user@example.com',
-    password: 'SecurePass123',
-    username: 'johndoe'
-  })
-});
+### Typography
+- **Font**: Inter (Google Fonts)
+- **Scale**: Tailwind default scale
 
-const { access_token, user } = await response.json();
+### Components
+- Built with **shadcn/ui** (Radix UI primitives)
+- Fully accessible (ARIA compliant)
+- Dark mode support
+- Responsive design
 
-// Store token
-localStorage.setItem('auth_token', access_token);
+## 🔗 API Integration
+
+Configure backend URL in `.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3000
+NEXT_PUBLIC_BACKEND_URL=http://localhost:3000/api/v1
 ```
 
-### 2. Login
+API routes are proxied through Next.js:
+- `/api/*` → Backend `/api/v1/*`
 
-```typescript
-const response = await fetch('/api/auth/login', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    email: 'user@example.com',
-    password: 'SecurePass123'
-  })
-});
+## 📦 Key Dependencies
 
-const { access_token } = await response.json();
-localStorage.setItem('auth_token', access_token);
-```
+- **next**: 15.0.3
+- **react**: 19.0.0
+- **typescript**: 5.6.3
+- **tailwindcss**: 4.0.0
+- **@radix-ui**: Latest UI primitives
+- **lucide-react**: Icon library
+- **axios**: HTTP client
+- **zod**: Schema validation
 
-### 3. Protected Requests
-
-```typescript
-const token = localStorage.getItem('auth_token');
-
-const response = await fetch('/api/auth/me', {
-  headers: {
-    'Authorization': `Bearer ${token}`
-  }
-});
-
-const user = await response.json();
-```
-
-## 🎫 Credential Verification Flow
-
-### 1. User Clicks "Verify" Button
-
-```typescript
-handleVerificationRequest('LINKEDIN')
-```
-
-### 2. Frontend Calls Next.js API Route
-
-```typescript
-const response = await fetch('/api/verify', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`
-  },
-  body: JSON.stringify({
-    providerId: 'LINKEDIN',
-    callbackUrl: window.location.origin + '/dashboard?verified=true'
-  })
-});
-
-const { verificationUrl } = await response.json();
-```
-
-### 3. Next.js Proxies to FastAPI
-
-```typescript
-// /api/verify calls FastAPI
-const response = await fetch('http://localhost:8000/api/v1/reclaim/session/start', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`
-  },
-  body: JSON.stringify({
-    provider_type: 'LINKEDIN',
-    callback_url: callbackUrl
-  })
-});
-```
-
-### 4. Redirect to Reclaim Protocol
-
-```typescript
-window.location.href = verificationUrl;
-// Example: https://share.reclaimprotocol.org/verify/session-id
-```
-
-### 5. User Completes Proof on Reclaim
-
-User scans QR code or logs in on Reclaim Protocol to generate zkTLS proof.
-
-### 6. Reclaim Calls FastAPI Webhook
-
-```
-POST /api/v1/reclaim/webhook
-{
-  "id": "session-id",
-  "providerId": "linkedin-profile",
-  "proof_data": {...}
-}
-```
-
-### 7. User Returns to Dashboard
-
-```
-https://vettedme.ai/dashboard?verified=true
-```
-
-Dashboard refreshes and shows verified badge!
-
-## 🎨 Components
-
-### PassportDashboard
-
-Main dashboard component with:
-
-- **User Profile Header** - Email, logout button, public profile link
-- **Stats Cards** - Verified, Pending, Total badges
-- **Badge Grid** - All available badges with status
-- **Verified Claims Display** - Show extracted claims for verified badges
-- **Coming Soon Section** - Future badge types
-
-**Badge States:**
-- `NOT_CONNECTED` - Gray, "Verify Now" button
-- `PENDING` - Amber, "Pending..." button (disabled)
-- `VERIFIED` - Green, "Verified ✓" button (disabled), shows claims
-
-## 🎨 Styling
-
-### Dark Theme
-
-```css
-Background: slate-900 (gradient)
-Cards: slate-800
-Borders: slate-700
-Text Primary: white
-Text Secondary: slate-400
-```
-
-### Colors
-
-```css
-Verified: emerald-500 (green)
-Pending: amber-500 (orange)
-Not Connected: slate-700 (gray)
-Primary Action: emerald-500
-```
-
-### Responsive
-
-- Mobile-first design
-- Grid layout adapts to screen size
-- Touch-friendly buttons
-
-## 🔧 Development
-
-### Type Checking
-
-```bash
-npm run type-check
-```
-
-### Linting
-
-```bash
-npm run lint
-```
-
-### Production Build
-
-```bash
-npm run build
-npm start
-```
-
-## 🚀 Deployment
+## 🚢 Deployment
 
 ### Vercel (Recommended)
-
 ```bash
-npm install -g vercel
-vercel
+vercel deploy
 ```
 
-Set environment variable:
-```
-FASTAPI_BASE_URL=https://api.vettedme.ai
+### Railway
+```bash
+railway up
 ```
 
 ### Docker
-
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
-EXPOSE 3000
-CMD ["npm", "start"]
-```
-
-## 📝 Environment Variables
-
 ```bash
-# .env.local
-FASTAPI_BASE_URL=http://localhost:8000  # Development
-# FASTAPI_BASE_URL=https://api.vettedme.ai  # Production
+docker build -t vetted-frontend .
+docker run -p 3000:3000 vetted-frontend
 ```
 
 ## 🎯 Next Steps
 
-### Week 1 Day 2 (Tomorrow):
-- [ ] Add login/register pages
-- [ ] Add email verification UI
-- [ ] Add profile editing
-- [ ] Add badge sharing (Twitter, LinkedIn)
-
-### Week 2:
-- [ ] Add public profile viewer
-- [ ] Add badge detail pages
-- [ ] Add search/filter badges
-- [ ] Add mobile app PWA
-
-## 🐛 Troubleshooting
-
-### "Failed to fetch"
-
-Check FastAPI backend is running:
-```bash
-cd ../
-python -m uvicorn app.main:app --reload
-```
-
-### "Unauthorized"
-
-Check JWT token is valid:
-```javascript
-const token = localStorage.getItem('auth_token');
-console.log(token); // Should be a long JWT string
-```
-
-### Tailwind styles not working
-
-```bash
-rm -rf .next
-npm run dev
-```
-
-## 📚 Resources
-
-- [Next.js Docs](https://nextjs.org/docs)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [TypeScript](https://www.typescriptlang.org/)
-- [Reclaim Protocol](https://www.reclaimprotocol.org/)
+### For Prompt 2-10:
+1. Implement shadcn/ui components
+2. Build assessment flow interfaces
+3. Create dashboard visualizations
+4. Add API integration layer
+5. Implement authentication
+6. Build passport public view
+7. Create escrow management UI
+8. Add real-time updates
+9. Implement video interview UI
+10. Polish and deploy
 
 ---
 
-**🎨 Beautiful Dark Dashboard Ready for zkTLS Badges**  
-**🚀 Connects to FastAPI Backend**  
-**💪 Production-Ready Code**
+**Built with ❤️ for VETTED - Trust Infrastructure for Cross-Border Tech Talent**

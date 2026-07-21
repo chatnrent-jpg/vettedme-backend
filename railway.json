@@ -1,0 +1,205 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "npm start",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 300,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3,
+    "numReplicas": 2,
+    "sleepApplication": false,
+    "cronJobs": []
+  },
+  "services": [
+    {
+      "name": "vetted-api-production",
+      "region": "us-east",
+      "plan": "pro",
+      "autoscaling": {
+        "enabled": true,
+        "minReplicas": 2,
+        "maxReplicas": 10,
+        "targetCPUUtilization": 70,
+        "targetMemoryUtilization": 80
+      }
+    },
+    {
+      "name": "vetted-db-primary",
+      "type": "postgresql",
+      "region": "us-east",
+      "plan": "pro",
+      "version": "15",
+      "highAvailability": true,
+      "readReplicas": [
+        {
+          "name": "vetted-db-lagos",
+          "region": "lagos",
+          "enabled": true
+        },
+        {
+          "name": "vetted-db-nairobi",
+          "region": "nairobi",
+          "enabled": true
+        },
+        {
+          "name": "vetted-db-sao-paulo",
+          "region": "sao-paulo",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "vetted-redis-production",
+      "type": "redis",
+      "region": "us-east",
+      "plan": "pro",
+      "version": "7",
+      "persistence": true,
+      "evictionPolicy": "allkeys-lru"
+    }
+  ],
+  "networking": {
+    "cdn": {
+      "enabled": true,
+      "cacheRules": [
+        {
+          "path": "/api/public/*",
+          "ttl": 3600,
+          "staleWhileRevalidate": 86400
+        },
+        {
+          "path": "/static/*",
+          "ttl": 86400,
+          "staleWhileRevalidate": 604800
+        }
+      ],
+      "edgeLocations": [
+        "lagos-ng",
+        "nairobi-ke",
+        "sao-paulo-br",
+        "san-francisco-us",
+        "london-uk",
+        "dubai-ae"
+      ]
+    },
+    "customDomains": [
+      {
+        "domain": "api.vetted.ai",
+        "region": "global"
+      }
+    ],
+    "cors": {
+      "origins": [
+        "https://vetted.ai",
+        "https://vettedme.com",
+        "https://vettedpay.ai"
+      ],
+      "methods": ["GET", "POST", "PUT", "DELETE", "PATCH"],
+      "allowedHeaders": ["Content-Type", "Authorization"],
+      "exposedHeaders": ["X-Total-Count", "X-Request-Id"],
+      "credentials": true,
+      "maxAge": 86400
+    }
+  },
+  "observability": {
+    "logs": {
+      "format": "json",
+      "level": "info",
+      "retention": 30
+    },
+    "metrics": {
+      "enabled": true,
+      "interval": 60
+    },
+    "traces": {
+      "enabled": true,
+      "sampleRate": 0.1
+    },
+    "alerts": [
+      {
+        "name": "High Error Rate",
+        "metric": "error_rate",
+        "threshold": 5,
+        "duration": 300,
+        "action": "email"
+      },
+      {
+        "name": "High Response Time",
+        "metric": "response_time_p99",
+        "threshold": 2000,
+        "duration": 300,
+        "action": "email"
+      },
+      {
+        "name": "Database Connection Pool Exhausted",
+        "metric": "db_pool_active",
+        "threshold": 90,
+        "duration": 60,
+        "action": "email"
+      }
+    ]
+  },
+  "security": {
+    "headers": {
+      "strictTransportSecurity": {
+        "enabled": true,
+        "maxAge": 31536000,
+        "includeSubDomains": true,
+        "preload": true
+      },
+      "contentSecurityPolicy": {
+        "enabled": true,
+        "directives": {
+          "defaultSrc": ["'self'"],
+          "scriptSrc": ["'self'", "'unsafe-inline'", "https://cdn.vetted.ai"],
+          "styleSrc": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+          "imgSrc": ["'self'", "data:", "https:", "blob:"],
+          "connectSrc": ["'self'", "https://api.vetted.ai"],
+          "fontSrc": ["'self'", "https://fonts.gstatic.com"],
+          "objectSrc": ["'none'"],
+          "mediaSrc": ["'self'"],
+          "frameSrc": ["'none'"]
+        }
+      },
+      "xFrameOptions": "DENY",
+      "xContentTypeOptions": "nosniff",
+      "referrerPolicy": "strict-origin-when-cross-origin"
+    },
+    "rateLimiting": {
+      "enabled": true,
+      "redis": true,
+      "rules": [
+        {
+          "path": "/api/v1/milestones/:id/release",
+          "limit": 5,
+          "window": 900
+        },
+        {
+          "path": "/webhooks/airwallex/*",
+          "limit": 100,
+          "window": 60
+        },
+        {
+          "path": "/api/*",
+          "limit": 100,
+          "window": 60
+        }
+      ]
+    },
+    "ipWhitelist": {
+      "enabled": true,
+      "paths": ["/webhooks/airwallex/*"],
+      "ranges": [
+        "52.62.0.0/15",
+        "54.240.0.0/12",
+        "13.52.0.0/16",
+        "18.130.0.0/16",
+        "52.220.0.0/15"
+      ]
+    }
+  }
+}

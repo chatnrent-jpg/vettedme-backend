@@ -1,26 +1,77 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Environment and secrets
+# Environment Variables (CRITICAL - NEVER COMMIT ACTUAL SECRETS)
 .env
+.env.*
+!.env.example
+!.env.production.example
+!.env.production.template
 .env.local
+.env.development
+.env.development.local
+.env.staging
+.env.staging.local
+.env.production
+.env.production.local
+.env.test
+.env.test.local
 
-# IDE / OS
-.idea/
-.vscode/
-*.swp
-Thumbs.db
-.DS_Store
-
-# Build / coverage
+# Build Output
 dist/
 build/
-htmlcov/
-.coverage
-coverage.xml
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+combined.log
+error.log
+
+# OS Files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Testing
+coverage/
+.nyc_output/
+
+# Prisma
+prisma/migrations/
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets
+*.pem
+*.key
+*.cert
+credentials.json
+
+# Cache
+.cache/
+.parcel-cache/
+
+# Storage (tax documents, uploads, etc.)
+storage/
+!storage/.gitkeep

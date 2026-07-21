@@ -1,5 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { encryptBankDataForRail } from '../lib/crypto';
+
+// Utility to read non-HttpOnly cookies (for user_did)
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) {
+    return parts.pop()?.split(';').shift() || null;
+  }
+  return null;
+}
 
 export default function TransferDashboard() {
   const [recipientDid, setRecipientDid] = useState('');
@@ -12,6 +24,15 @@ export default function TransferDashboard() {
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [userDid, setUserDid] = useState('');
+
+  // Load user DID from secure cookie on mount
+  useEffect(() => {
+    const did = getCookie('user_did');
+    if (did) {
+      setUserDid(did);
+    }
+  }, []);
 
   // Airwallex/Bank Public Key used solely on the client-side
   // In production, fetch this from your backend's /api/v1/payments/rails/public-keys endpoint
@@ -59,15 +80,16 @@ I7JZHjF7KxXYZ5L3HjtN9I7JZHjF7KxXYZ5L3HjtN9I7JZHjF7KxXYZ5L3HjtN9I
       setStatusMsg('Dispatching Zero-Knowledge Transaction Payload...');
       
       // 3. Post cleanly to your FastAPI Transaction Engine endpoint
+      // SECURITY: No Authorization header needed - HttpOnly cookie is sent automatically by browser
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       const response = await fetch(`${apiUrl}/api/v1/vettedpay/transfer`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('vettedme_token')}`
         },
+        credentials: 'include',  // CRITICAL: Include HttpOnly cookies in request
         body: JSON.stringify({
-          sender_did: localStorage.getItem('user_did') || 'did:vettedme:sender',
+          sender_did: userDid || 'did:vettedme:sender',
           recipient_did: recipientDid,
           amount: parseFloat(amount),
           currency,

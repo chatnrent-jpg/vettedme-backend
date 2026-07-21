@@ -1,0 +1,345 @@
+{
+  "version": "1.0.0",
+  "name": "VETTED Alert Configuration",
+  "description": "Automatic alerts for critical system errors and rate limit violations",
+  "lastUpdated": "2026-07-20",
+  "alerts": [
+    {
+      "id": "biometric-endpoint-5xx-errors",
+      "name": "Biometric Endpoint 5xx Errors",
+      "severity": "critical",
+      "enabled": true,
+      "condition": {
+        "metric": "error.count",
+        "tags": {
+          "endpoint": "/api/v1/milestones/:id/release",
+          "status_code": "5xx"
+        },
+        "threshold": 3,
+        "window": 60,
+        "aggregation": "sum"
+      },
+      "notification": {
+        "channels": ["email", "slack", "pagerduty"],
+        "recipients": ["dev-team@vetted.ai", "#alerts-critical"],
+        "message": "CRITICAL: Biometric endpoint returned >3 5xx errors in 60 seconds. Immediate investigation required."
+      },
+      "actions": [
+        {
+          "type": "auto_scale",
+          "config": {
+            "min_instances": 3,
+            "max_instances": 10
+          }
+        },
+        {
+          "type": "circuit_breaker",
+          "config": {
+            "duration": 300
+          }
+        }
+      ]
+    },
+    {
+      "id": "biometric-endpoint-rate-limit",
+      "name": "Biometric Endpoint Rate Limit Exceeded",
+      "severity": "warning",
+      "enabled": true,
+      "condition": {
+        "metric": "rate_limit.exceeded",
+        "tags": {
+          "endpoint": "/api/v1/milestones/:id/release"
+        },
+        "threshold": 3,
+        "window": 60,
+        "aggregation": "sum"
+      },
+      "notification": {
+        "channels": ["email", "slack"],
+        "recipients": ["dev-team@vetted.ai", "#alerts-warnings"],
+        "message": "WARNING: Biometric endpoint rate limit exceeded >3 times in 60 seconds. Possible brute-force attack."
+      },
+      "actions": [
+        {
+          "type": "increase_rate_limit",
+          "config": {
+            "lockout_duration": 1800
+          }
+        }
+      ]
+    },
+    {
+      "id": "webhook-5xx-errors",
+      "name": "Webhook Processing 5xx Errors",
+      "severity": "critical",
+      "enabled": true,
+      "condition": {
+        "metric": "error.count",
+        "tags": {
+          "endpoint": "/webhooks/*",
+          "status_code": "5xx"
+        },
+        "threshold": 3,
+        "window": 60,
+        "aggregation": "sum"
+      },
+      "notification": {
+        "channels": ["email", "slack", "pagerduty"],
+        "recipients": ["dev-team@vetted.ai", "#alerts-critical"],
+        "message": "CRITICAL: Webhook endpoint returned >3 5xx errors in 60 seconds. Payment processing may be affected."
+      },
+      "actions": [
+        {
+          "type": "retry_queue",
+          "config": {
+            "max_retries": 5,
+            "backoff": "exponential"
+          }
+        }
+      ]
+    },
+    {
+      "id": "webhook-rate-limit",
+      "name": "Webhook Rate Limit Exceeded",
+      "severity": "warning",
+      "enabled": true,
+      "condition": {
+        "metric": "rate_limit.exceeded",
+        "tags": {
+          "endpoint": "/webhooks/airwallex/*"
+        },
+        "threshold": 3,
+        "window": 60,
+        "aggregation": "sum"
+      },
+      "notification": {
+        "channels": ["email", "slack"],
+        "recipients": ["dev-team@vetted.ai", "#alerts-warnings"],
+        "message": "WARNING: Airwallex webhook rate limit exceeded >3 times in 60 seconds. Check IP whitelist configuration."
+      }
+    },
+    {
+      "id": "database-connection-pool-exhausted",
+      "name": "Database Connection Pool Exhausted",
+      "severity": "critical",
+      "enabled": true,
+      "condition": {
+        "metric": "database.connection_pool.active",
+        "threshold": 90,
+        "window": 60,
+        "aggregation": "avg",
+        "operator": ">"
+      },
+      "notification": {
+        "channels": ["email", "slack", "pagerduty"],
+        "recipients": ["dev-team@vetted.ai", "#alerts-critical"],
+        "message": "CRITICAL: Database connection pool >90% utilized. Scale up or optimize queries immediately."
+      },
+      "actions": [
+        {
+          "type": "auto_scale_database",
+          "config": {
+            "increase_pool_size": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "api-latency-high",
+      "name": "High API Latency (p99)",
+      "severity": "warning",
+      "enabled": true,
+      "condition": {
+        "metric": "api.request.duration",
+        "percentile": 99,
+        "threshold": 2000,
+        "window": 300,
+        "aggregation": "p99",
+        "operator": ">"
+      },
+      "notification": {
+        "channels": ["email", "slack"],
+        "recipients": ["dev-team@vetted.ai", "#alerts-warnings"],
+        "message": "WARNING: API latency p99 >2000ms over 5 minutes. Performance degradation detected."
+      }
+    },
+    {
+      "id": "biometric-verification-failure-rate",
+      "name": "High Biometric Verification Failure Rate",
+      "severity": "error",
+      "enabled": true,
+      "condition": {
+        "metric": "biometric.verification.count",
+        "tags": {
+          "result": "failure"
+        },
+        "threshold": 50,
+        "window": 300,
+        "aggregation": "percentage",
+        "operator": ">"
+      },
+      "notification": {
+        "channels": ["email", "slack"],
+        "recipients": ["dev-team@vetted.ai", "#alerts-errors"],
+        "message": "ERROR: Biometric verification failure rate >50% over 5 minutes. Check Smile ID integration."
+      }
+    },
+    {
+      "id": "payment-processing-failure-rate",
+      "name": "High Payment Processing Failure Rate",
+      "severity": "critical",
+      "enabled": true,
+      "condition": {
+        "metric": "payment.processing.count",
+        "tags": {
+          "status": "failure"
+        },
+        "threshold": 30,
+        "window": 300,
+        "aggregation": "percentage",
+        "operator": ">"
+      },
+      "notification": {
+        "channels": ["email", "slack", "pagerduty"],
+        "recipients": ["dev-team@vetted.ai", "finance-team@vetted.ai", "#alerts-critical"],
+        "message": "CRITICAL: Payment processing failure rate >30% over 5 minutes. Revenue at risk!"
+      },
+      "actions": [
+        {
+          "type": "failover_payment_provider",
+          "config": {
+            "primary": "airwallex",
+            "fallback": "wise"
+          }
+        }
+      ]
+    },
+    {
+      "id": "memory-usage-high",
+      "name": "High Memory Usage",
+      "severity": "warning",
+      "enabled": true,
+      "condition": {
+        "metric": "system.memory.usage",
+        "threshold": 80,
+        "window": 300,
+        "aggregation": "avg",
+        "operator": ">"
+      },
+      "notification": {
+        "channels": ["email", "slack"],
+        "recipients": ["dev-team@vetted.ai", "#alerts-warnings"],
+        "message": "WARNING: Memory usage >80% over 5 minutes. Consider scaling up."
+      },
+      "actions": [
+        {
+          "type": "auto_scale",
+          "config": {
+            "add_instances": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "cpu-usage-high",
+      "name": "High CPU Usage",
+      "severity": "warning",
+      "enabled": true,
+      "condition": {
+        "metric": "system.cpu.usage",
+        "threshold": 70,
+        "window": 300,
+        "aggregation": "avg",
+        "operator": ">"
+      },
+      "notification": {
+        "channels": ["email", "slack"],
+        "recipients": ["dev-team@vetted.ai", "#alerts-warnings"],
+        "message": "WARNING: CPU usage >70% over 5 minutes. Auto-scaling will trigger."
+      }
+    },
+    {
+      "id": "error-rate-spike",
+      "name": "Overall Error Rate Spike",
+      "severity": "error",
+      "enabled": true,
+      "condition": {
+        "metric": "error.count",
+        "threshold": 5,
+        "window": 60,
+        "aggregation": "percentage",
+        "operator": ">"
+      },
+      "notification": {
+        "channels": ["email", "slack"],
+        "recipients": ["dev-team@vetted.ai", "#alerts-errors"],
+        "message": "ERROR: Overall error rate >5% over 1 minute. System health degraded."
+      }
+    },
+    {
+      "id": "regional-latency-degradation",
+      "name": "Regional Latency Degradation",
+      "severity": "warning",
+      "enabled": true,
+      "condition": {
+        "metric": "regional.latency",
+        "tags": {
+          "region": ["lagos", "nairobi", "sao-paulo"]
+        },
+        "threshold": 150,
+        "window": 300,
+        "aggregation": "avg",
+        "operator": ">"
+      },
+      "notification": {
+        "channels": ["email", "slack"],
+        "recipients": ["dev-team@vetted.ai", "#alerts-warnings"],
+        "message": "WARNING: Regional latency >150ms in priority regions. CDN or replica issue."
+      }
+    }
+  ],
+  "notification_channels": {
+    "email": {
+      "enabled": true,
+      "smtp_host": "smtp.sendgrid.net",
+      "smtp_port": 587,
+      "from": "alerts@vetted.ai",
+      "recipients": ["dev-team@vetted.ai"]
+    },
+    "slack": {
+      "enabled": true,
+      "webhook_url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+      "channels": ["#alerts-critical", "#alerts-warnings", "#alerts-errors"]
+    },
+    "pagerduty": {
+      "enabled": true,
+      "integration_key": "PAGERDUTY_INTEGRATION_KEY_HERE",
+      "service_id": "PAGERDUTY_SERVICE_ID_HERE"
+    },
+    "datadog": {
+      "enabled": true,
+      "api_key": "DD_API_KEY_HERE"
+    },
+    "sentry": {
+      "enabled": true,
+      "dsn": "SENTRY_DSN_HERE"
+    }
+  },
+  "escalation_policy": {
+    "level_1": {
+      "delay": 0,
+      "recipients": ["dev-team@vetted.ai"],
+      "channels": ["slack"]
+    },
+    "level_2": {
+      "delay": 300,
+      "recipients": ["dev-team@vetted.ai", "tech-lead@vetted.ai"],
+      "channels": ["email", "slack"]
+    },
+    "level_3": {
+      "delay": 600,
+      "recipients": ["dev-team@vetted.ai", "tech-lead@vetted.ai", "cto@vetted.ai"],
+      "channels": ["email", "slack", "pagerduty"]
+    }
+  }
+}

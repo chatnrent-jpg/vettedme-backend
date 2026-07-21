@@ -1,55 +1,162 @@
 version: '3.8'
 
 services:
-  vettedme-backend-prod:
+  # VETTED Core API Engine
+  vetted-core-engine:
     build:
       context: .
-      dockerfile: Dockerfile.production
-    container_name: vettedme-backend-hardened-prod
+      dockerfile: Dockerfile
+      target: production
+    container_name: vetted_api_node
     restart: always
     ports:
-      - "8503:8000"
-    env_file:
-      - .env.production
-    read_only: true # Enforces a completely read-only root file system for maximum security protection
-    tmpfs:
-      - /tmp # Provides a secure, temporary memory storage area away from physical disk layers
-    security_opt:
-      - no-new-privileges:true # Blocks processes inside the container from gaining elevated access permissions
+      - "8080:8080"
+    environment:
+      # Application
+      - NODE_ENV=production
+      - PORT=8080
+      - API_VERSION=v1
+      
+      # Database
+      - DATABASE_URL=postgresql://vetted_master:SecOpr_9921_xX@vetted-db-cluster:5432/vetted_ledger?schema=public
+      
+      # JWT Authentication
+      - JWT_SECRET=${JWT_SECRET_SIGNING_KEY}
+      - JWT_EXPIRY=7d
+      
+      # VettedME - Smile ID (Biometric Identity Verification)
+      - SMILE_ID_API_KEY=${SMILE_ID_API_KEY}
+      - SMILE_ID_PARTNER_ID=${SMILE_ID_PARTNER_ID}
+      - SMILE_ID_SANDBOX_MODE=false
+      - SMILE_ID_WEBHOOK_SECRET=${SMILE_ID_WEBHOOK_SECRET}
+      
+      # VettedPay - Airwallex (Payment Settlement)
+      - AIRWALLEX_CLIENT_ID=${AIRWALLEX_CLIENT_ID}
+      - AIRWALLEX_API_KEY=${AIRWALLEX_API_KEY}
+      - AIRWALLEX_ENVIRONMENT=production
+      - AIRWALLEX_WEBHOOK_SECRET_KEY=${AIRWALLEX_WEBHOOK_SECRET_KEY}
+      
+      # Treasury & Arbitration Wallets
+      - VETTED_TREASURY_WALLET_ID=${VETTED_TREASURY_WALLET_ID}
+      - VETTED_ARBITRATION_WALLET_ID=${VETTED_ARBITRATION_WALLET_ID}
+      
+      # Webhook URLs (Production)
+      - WEBHOOK_BASE_URL=${WEBHOOK_BASE_URL:-https://api.vetted.com}
+      - VETTEDME_WEBHOOK_URL=${WEBHOOK_BASE_URL:-https://api.vetted.com}/api/v1/webhooks/vettedme
+      - AIRWALLEX_DEPOSIT_WEBHOOK_URL=${WEBHOOK_BASE_URL:-https://api.vetted.com}/api/v1/webhooks/airwallex/deposit
+      - AIRWALLEX_PAYOUT_WEBHOOK_URL=${WEBHOOK_BASE_URL:-https://api.vetted.com}/api/v1/webhooks/airwallex/payout
+      
+      # Security
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - CORS_ORIGIN=${CORS_ORIGIN:-https://app.vetted.com}
+      
+      # Rate Limiting
+      - RATE_LIMIT_WINDOW_MS=900000
+      - RATE_LIMIT_MAX_REQUESTS=100
+      
     depends_on:
-      - vettedme-db-prod
-      - vettedme-cache-prod
+      vetted-db-cluster:
+        condition: service_healthy
     networks:
-      - vettedme-prod-secure-network
+      - vetted-secure-mesh
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  vettedme-cache-prod:
-    image: redis:7-alpine
-    container_name: vettedme-cache-secure-prod
-    command: redis-server --requirepass @Prowess247 --maxmemory 256mb --maxmemory-policy allkeys-lru
+  # PostgreSQL Database Cluster
+  vetted-db-cluster:
+    image: postgres:16-alpine
+    container_name: vetted_postgres_db
     restart: always
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - vettedme-prod-secure-network
-
-  vettedme-db-prod:
-    image: postgres:15-alpine
-    container_name: vettedme-db-secure-prod
-    restart: always
+    environment:
+      - POSTGRES_USER=vetted_master
+      - POSTGRES_PASSWORD=SecOpr_9921_xX
+      - POSTGRES_DB=vetted_ledger
+      - POSTGRES_INITDB_ARGS=--encoding=UTF8 --locale=en_US.UTF-8
     ports:
       - "5432:5432"
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=@Prowess247
-      - POSTGRES_DB=offercare_db
     volumes:
-      - vettedme-prod-db-data:/var/lib/postgresql/data
+      - vetted_ledger_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vetted_master -d vetted_ledger"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
-      - vettedme-prod-secure-network
+      - vetted-secure-mesh
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=1GB"
+      - "-c"
+      - "maintenance_work_mem=64MB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "default_statistics_target=100"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+      - "-c"
+      - "work_mem=2621kB"
+      - "-c"
+      - "min_wal_size=1GB"
+      - "-c"
+      - "max_wal_size=4GB"
+
+  # Redis Cache (Optional - for session management & caching)
+  vetted-redis-cache:
+    image: redis:7-alpine
+    container_name: vetted_redis_cache
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - vetted_redis_data:/data
+    networks:
+      - vetted-secure-mesh
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
 
 volumes:
-  vettedme-prod-db-data:
+  vetted_ledger_data:
+    driver: local
+  vetted_redis_data:
+    driver: local
 
 networks:
-  vettedme-prod-secure-network:
+  vetted-secure-mesh:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

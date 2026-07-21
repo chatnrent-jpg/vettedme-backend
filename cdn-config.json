@@ -1,0 +1,430 @@
+{
+  "version": "1.0.0",
+  "name": "VETTED Global CDN Configuration",
+  "description": "Edge routing and regional caching configuration for sub-100ms latency",
+  "lastUpdated": "2026-07-20",
+  "cdn": {
+    "provider": "cloudflare",
+    "enabled": true,
+    "globalAcceleration": true,
+    "http3Enabled": true,
+    "brotliCompression": true,
+    "gzipCompression": true,
+    "minifyEnabled": {
+      "html": false,
+      "css": true,
+      "js": true
+    }
+  },
+  "edgeLocations": [
+    {
+      "name": "Lagos Hub (West Africa)",
+      "code": "lagos-ng",
+      "region": "africa-west",
+      "country": "NG",
+      "city": "Lagos",
+      "coordinates": {
+        "lat": 6.5244,
+        "lon": 3.3792
+      },
+      "coverage": [
+        "NG",
+        "GH",
+        "SN",
+        "CI",
+        "BJ",
+        "TG"
+      ],
+      "services": {
+        "cdn": true,
+        "api": true,
+        "database": true,
+        "cache": true
+      },
+      "priority": 1,
+      "healthCheckUrl": "https://lagos.edge.vetted.ai/health"
+    },
+    {
+      "name": "Nairobi Hub (East Africa)",
+      "code": "nairobi-ke",
+      "region": "africa-east",
+      "country": "KE",
+      "city": "Nairobi",
+      "coordinates": {
+        "lat": -1.2921,
+        "lon": 36.8219
+      },
+      "coverage": [
+        "KE",
+        "UG",
+        "TZ",
+        "RW",
+        "ET",
+        "SO"
+      ],
+      "services": {
+        "cdn": true,
+        "api": true,
+        "database": true,
+        "cache": true
+      },
+      "priority": 1,
+      "healthCheckUrl": "https://nairobi.edge.vetted.ai/health"
+    },
+    {
+      "name": "São Paulo Hub (Latin America)",
+      "code": "sao-paulo-br",
+      "region": "latam-south",
+      "country": "BR",
+      "city": "São Paulo",
+      "coordinates": {
+        "lat": -23.5505,
+        "lon": -46.6333
+      },
+      "coverage": [
+        "BR",
+        "AR",
+        "CL",
+        "CO",
+        "PE",
+        "UY"
+      ],
+      "services": {
+        "cdn": true,
+        "api": true,
+        "database": true,
+        "cache": true
+      },
+      "priority": 1,
+      "healthCheckUrl": "https://sao-paulo.edge.vetted.ai/health"
+    },
+    {
+      "name": "San Francisco (North America)",
+      "code": "san-francisco-us",
+      "region": "north-america-west",
+      "country": "US",
+      "city": "San Francisco",
+      "coordinates": {
+        "lat": 37.7749,
+        "lon": -122.4194
+      },
+      "coverage": [
+        "US",
+        "CA",
+        "MX"
+      ],
+      "services": {
+        "cdn": true,
+        "api": true,
+        "database": true,
+        "cache": true
+      },
+      "priority": 2,
+      "healthCheckUrl": "https://us-west.edge.vetted.ai/health"
+    },
+    {
+      "name": "London (Europe)",
+      "code": "london-uk",
+      "region": "europe-west",
+      "country": "UK",
+      "city": "London",
+      "coordinates": {
+        "lat": 51.5074,
+        "lon": -0.1278
+      },
+      "coverage": [
+        "UK",
+        "FR",
+        "DE",
+        "NL",
+        "BE",
+        "IE"
+      ],
+      "services": {
+        "cdn": true,
+        "api": true,
+        "database": false,
+        "cache": true
+      },
+      "priority": 2,
+      "healthCheckUrl": "https://london.edge.vetted.ai/health"
+    },
+    {
+      "name": "Dubai (Middle East)",
+      "code": "dubai-ae",
+      "region": "middle-east",
+      "country": "AE",
+      "city": "Dubai",
+      "coordinates": {
+        "lat": 25.2048,
+        "lon": 55.2708
+      },
+      "coverage": [
+        "AE",
+        "SA",
+        "QA",
+        "KW",
+        "OM",
+        "BH"
+      ],
+      "services": {
+        "cdn": true,
+        "api": true,
+        "database": false,
+        "cache": true
+      },
+      "priority": 2,
+      "healthCheckUrl": "https://dubai.edge.vetted.ai/health"
+    }
+  ],
+  "regionalRouting": {
+    "enabled": true,
+    "strategy": "geo-proximity",
+    "fallbackStrategy": "lowest-latency",
+    "healthCheckInterval": 30,
+    "rules": [
+      {
+        "name": "West Africa Route",
+        "countries": [
+          "NG",
+          "GH",
+          "SN",
+          "CI",
+          "BJ",
+          "TG"
+        ],
+        "primaryEdge": "lagos-ng",
+        "fallbackEdge": "london-uk",
+        "databaseReplica": "DATABASE_READ_REPLICA_LAGOS",
+        "cacheTTL": 300
+      },
+      {
+        "name": "East Africa Route",
+        "countries": [
+          "KE",
+          "UG",
+          "TZ",
+          "RW",
+          "ET",
+          "SO"
+        ],
+        "primaryEdge": "nairobi-ke",
+        "fallbackEdge": "dubai-ae",
+        "databaseReplica": "DATABASE_READ_REPLICA_NAIROBI",
+        "cacheTTL": 300
+      },
+      {
+        "name": "Latin America Route",
+        "countries": [
+          "BR",
+          "AR",
+          "CL",
+          "CO",
+          "PE",
+          "UY"
+        ],
+        "primaryEdge": "sao-paulo-br",
+        "fallbackEdge": "san-francisco-us",
+        "databaseReplica": "DATABASE_READ_REPLICA_SAO_PAULO",
+        "cacheTTL": 300
+      },
+      {
+        "name": "North America Route",
+        "countries": [
+          "US",
+          "CA",
+          "MX"
+        ],
+        "primaryEdge": "san-francisco-us",
+        "fallbackEdge": "london-uk",
+        "databaseReplica": "DATABASE_URL",
+        "cacheTTL": 600
+      },
+      {
+        "name": "Europe Route",
+        "countries": [
+          "UK",
+          "FR",
+          "DE",
+          "NL",
+          "BE",
+          "IE"
+        ],
+        "primaryEdge": "london-uk",
+        "fallbackEdge": "san-francisco-us",
+        "databaseReplica": "DATABASE_URL",
+        "cacheTTL": 600
+      },
+      {
+        "name": "Middle East Route",
+        "countries": [
+          "AE",
+          "SA",
+          "QA",
+          "KW",
+          "OM",
+          "BH"
+        ],
+        "primaryEdge": "dubai-ae",
+        "fallbackEdge": "london-uk",
+        "databaseReplica": "DATABASE_URL",
+        "cacheTTL": 600
+      }
+    ]
+  },
+  "cacheConfiguration": {
+    "enabled": true,
+    "defaultTTL": 300,
+    "maxTTL": 86400,
+    "staleWhileRevalidate": true,
+    "staleWhileRevalidateTTL": 3600,
+    "rules": [
+      {
+        "path": "/api/public/passports/:id",
+        "method": "GET",
+        "ttl": 1800,
+        "staleWhileRevalidate": true,
+        "staleWhileRevalidateTTL": 7200,
+        "varyHeaders": [
+          "Accept-Language"
+        ]
+      },
+      {
+        "path": "/api/v1/contractors/search",
+        "method": "GET",
+        "ttl": 600,
+        "staleWhileRevalidate": true,
+        "staleWhileRevalidateTTL": 1800,
+        "varyHeaders": [
+          "Accept-Language",
+          "Authorization"
+        ]
+      },
+      {
+        "path": "/static/*",
+        "method": "GET",
+        "ttl": 86400,
+        "staleWhileRevalidate": true,
+        "staleWhileRevalidateTTL": 604800,
+        "immutable": true
+      },
+      {
+        "path": "/api/v1/milestones/:id/release",
+        "method": "POST",
+        "ttl": 0,
+        "cache": false
+      },
+      {
+        "path": "/webhooks/*",
+        "method": "POST",
+        "ttl": 0,
+        "cache": false
+      }
+    ]
+  },
+  "compressionConfiguration": {
+    "enabled": true,
+    "minSize": 1024,
+    "algorithms": [
+      "br",
+      "gzip",
+      "deflate"
+    ],
+    "level": {
+      "br": 6,
+      "gzip": 6
+    },
+    "contentTypes": [
+      "text/html",
+      "text/css",
+      "text/javascript",
+      "application/javascript",
+      "application/json",
+      "application/xml",
+      "text/xml",
+      "image/svg+xml"
+    ]
+  },
+  "performanceTargets": {
+    "primaryRegions": {
+      "lagos-ng": {
+        "ttfb": 80,
+        "description": "Time to First Byte (ms) for Lagos hub"
+      },
+      "nairobi-ke": {
+        "ttfb": 85,
+        "description": "Time to First Byte (ms) for Nairobi hub"
+      },
+      "sao-paulo-br": {
+        "ttfb": 90,
+        "description": "Time to First Byte (ms) for São Paulo hub"
+      }
+    },
+    "databaseLatency": {
+      "readReplica": 50,
+      "description": "Max latency (ms) to nearest read replica"
+    },
+    "cacheHitRate": {
+      "target": 85,
+      "description": "Target cache hit rate (%)"
+    }
+  },
+  "monitoring": {
+    "enabled": true,
+    "metrics": [
+      {
+        "name": "edge_latency",
+        "type": "histogram",
+        "labels": [
+          "edge_location",
+          "country",
+          "endpoint"
+        ]
+      },
+      {
+        "name": "cache_hit_rate",
+        "type": "gauge",
+        "labels": [
+          "edge_location",
+          "cache_tier"
+        ]
+      },
+      {
+        "name": "database_query_latency",
+        "type": "histogram",
+        "labels": [
+          "region",
+          "query_type"
+        ]
+      },
+      {
+        "name": "cdn_bandwidth",
+        "type": "counter",
+        "labels": [
+          "edge_location",
+          "content_type"
+        ]
+      }
+    ],
+    "alerts": [
+      {
+        "name": "High Edge Latency",
+        "condition": "edge_latency_p95 > 150ms",
+        "duration": 300,
+        "severity": "warning"
+      },
+      {
+        "name": "Low Cache Hit Rate",
+        "condition": "cache_hit_rate < 70%",
+        "duration": 600,
+        "severity": "warning"
+      },
+      {
+        "name": "Database Replica Unreachable",
+        "condition": "database_replica_health == 0",
+        "duration": 60,
+        "severity": "critical"
+      }
+    ]
+  }
+}

@@ -7,10 +7,13 @@ Orchestrates the entire payout flow from frontend client to financial rail.
 import hashlib
 import time
 import logging
-from typing import Dict, Any, Optional
-from datetime import datetime, timezone
+import asyncio
+import aiohttp
+from typing import Dict, Any, Optional, List
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from sqlalchemy.orm import Session
+from collections import defaultdict, deque
 
 from .airwallex_rail import AirwallexRail
 from .payout_adapter import PayoutProviderAdapter, PayoutResult, PayoutRail, PayoutStatus
@@ -25,6 +28,186 @@ from app.models.vettedpay import (
 logger = logging.getLogger(__name__)
 
 
+class CircuitBreaker:
+    """
+    Emergency Kill-Switch & Circuit Breaker for Financial Rails
+    
+    Tracks consecutive failures per rail and automatically triggers failover
+    when a rail becomes unreliable (3+ consecutive failures).
+    
+    Features:
+    - Real-time failure tracking per rail
+    - Automatic circuit opening after threshold
+    - Time-based circuit reset (recovery attempts)
+    - Emergency webhook alerting
+    """
+    
+    def __init__(
+        self,
+        failure_threshold: int = 3,
+        reset_timeout_seconds: int = 300,  # 5 minutes
+        alert_webhook_url: Optional[str] = None
+    ):
+        """
+        Initialize circuit breaker.
+        
+        Args:
+            failure_threshold: Number of consecutive failures before circuit opens
+            reset_timeout_seconds: Seconds before attempting to close circuit
+            alert_webhook_url: Webhook URL for emergency alerts (Slack, Discord, etc.)
+        """
+        self.failure_threshold = failure_threshold
+        self.reset_timeout = timedelta(seconds=reset_timeout_seconds)
+        self.alert_webhook_url = alert_webhook_url
+        
+        # Track failures per rail
+        self._failure_counts: Dict[str, int] = defaultdict(int)
+        self._failure_history: Dict[str, deque] = defaultdict(lambda: deque(maxlen=10))
+        self._circuit_opened_at: Dict[str, Optional[datetime]] = {}
+        self._last_alert_sent: Dict[str, Optional[datetime]] = {}
+    
+    def record_success(self, rail: str):
+        """Record successful transaction - reset failure count."""
+        if rail in self._failure_counts:
+            logger.info(f"Circuit breaker: Rail {rail} recovered, resetting failure count")
+        self._failure_counts[rail] = 0
+        self._circuit_opened_at[rail] = None
+    
+    async def record_failure(self, rail: str, error: str):
+        """
+        Record failed transaction and check if circuit should open.
+        
+        Args:
+            rail: Rail identifier (e.g., "airwallex", "nium")
+            error: Error message
+        """
+        self._failure_counts[rail] += 1
+        self._failure_history[rail].append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "error": error
+        })
+        
+        logger.warning(
+            f"Circuit breaker: Rail {rail} failure #{self._failure_counts[rail]} - {error}"
+        )
+        
+        # Check if threshold reached
+        if self._failure_counts[rail] >= self.failure_threshold:
+            if not self._circuit_opened_at.get(rail):
+                # Circuit just opened - send alert
+                self._circuit_opened_at[rail] = datetime.now(timezone.utc)
+                logger.error(
+                    f"🚨 CIRCUIT BREAKER OPENED: Rail {rail} exceeded {self.failure_threshold} "
+                    f"consecutive failures. Switching to backup rail."
+                )
+                await self._send_emergency_alert(rail, self._failure_history[rail])
+    
+    def is_circuit_open(self, rail: str) -> bool:
+        """
+        Check if circuit is open for given rail.
+        
+        Returns:
+            True if circuit is open (rail should NOT be used)
+        """
+        if rail not in self._circuit_opened_at or self._circuit_opened_at[rail] is None:
+            return False
+        
+        # Check if enough time has passed to attempt reset
+        opened_at = self._circuit_opened_at[rail]
+        elapsed = datetime.now(timezone.utc) - opened_at
+        
+        if elapsed > self.reset_timeout:
+            logger.info(
+                f"Circuit breaker: Attempting to close circuit for {rail} "
+                f"after {elapsed.total_seconds():.0f}s cooldown"
+            )
+            # Reset and allow retry
+            self._failure_counts[rail] = 0
+            self._circuit_opened_at[rail] = None
+            return False
+        
+        return True
+    
+    def get_failure_count(self, rail: str) -> int:
+        """Get current failure count for rail."""
+        return self._failure_counts.get(rail, 0)
+    
+    def get_available_rails(self, all_rails: List[str]) -> List[str]:
+        """
+        Get list of currently available (non-broken) rails.
+        
+        Args:
+            all_rails: List of all configured rails
+            
+        Returns:
+            List of rails with open circuits removed
+        """
+        return [rail for rail in all_rails if not self.is_circuit_open(rail)]
+    
+    async def _send_emergency_alert(self, rail: str, failure_history: deque):
+        """
+        Send emergency alert via webhook when circuit opens.
+        
+        Args:
+            rail: Failed rail identifier
+            failure_history: Recent failure log
+        """
+        if not self.alert_webhook_url:
+            logger.info("Circuit breaker: No alert webhook configured, skipping alert")
+            return
+        
+        # Rate limit alerts (max 1 per rail per hour)
+        last_alert = self._last_alert_sent.get(rail)
+        if last_alert and (datetime.now(timezone.utc) - last_alert) < timedelta(hours=1):
+            logger.info(f"Circuit breaker: Alert rate-limited for {rail}")
+            return
+        
+        # Prepare alert payload
+        alert_payload = {
+            "text": f"🚨 VETTEDPAY EMERGENCY: Circuit breaker opened for rail '{rail}'",
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*🚨 CIRCUIT BREAKER ALERT*\n\n"
+                            f"*Rail:* `{rail}`\n"
+                            f"*Failure Count:* {self._failure_counts[rail]}\n"
+                            f"*Timestamp:* {datetime.now(timezone.utc).isoformat()}\n"
+                            f"*Action:* Automatically switched to backup rail"
+                        )
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*Recent Errors:*\n" + "\n".join(
+                            f"• {failure['timestamp'][:19]}: {failure['error'][:100]}"
+                            for failure in list(failure_history)[-3:]
+                        )
+                    }
+                }
+            ]
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.alert_webhook_url,
+                    json=alert_payload,
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    if response.status == 200:
+                        logger.info(f"Circuit breaker: Emergency alert sent for {rail}")
+                        self._last_alert_sent[rail] = datetime.now(timezone.utc)
+                    else:
+                        logger.error(f"Circuit breaker: Alert webhook returned {response.status}")
+        except Exception as exc:
+            logger.error(f"Circuit breaker: Failed to send alert - {exc}")
+
+
 class VettedPayTransactionEngine:
     """
     Core engine managing zero-knowledge compliance verification and 
@@ -35,6 +218,7 @@ class VettedPayTransactionEngine:
     2. Verifies ZK-proof of non-sanction
     3. Dynamically loads active financial rail
     4. Securely dispatches transfer
+    5. CRITICAL: Auto-fails over to backup rails if primary fails 3+ times
     
     Your engine passes encrypted data without seeing the contents.
     """
@@ -44,7 +228,10 @@ class VettedPayTransactionEngine:
         active_provider: str,
         provider_config: Dict[str, Any],
         db_session: Optional[Session] = None,
-        compliance_generator: Optional[CompliancePacketGenerator] = None
+        compliance_generator: Optional[CompliancePacketGenerator] = None,
+        backup_providers: Optional[List[str]] = None,
+        circuit_breaker: Optional[CircuitBreaker] = None,
+        alert_webhook_url: Optional[str] = None
     ):
         """
         Initialize transaction engine with dynamic provider selection.
@@ -54,30 +241,59 @@ class VettedPayTransactionEngine:
             provider_config: Provider-specific configuration
             db_session: Optional SQLAlchemy database session for persistence
             compliance_generator: Optional compliance packet generator
+            backup_providers: List of backup providers for automatic failover
+            circuit_breaker: Optional circuit breaker instance (creates default if None)
+            alert_webhook_url: Webhook URL for emergency alerts
         """
         self.active_provider = active_provider
         self.compliance_generator = compliance_generator
         self.db = db_session
+        self.backup_providers = backup_providers or []
+        self.provider_config = provider_config
         
+        # Initialize circuit breaker
+        self.circuit_breaker = circuit_breaker or CircuitBreaker(
+            failure_threshold=3,
+            reset_timeout_seconds=300,  # 5 minutes
+            alert_webhook_url=alert_webhook_url
+        )
+        
+        # Load primary rail
+        self.rail = self._load_rail(active_provider, provider_config)
+        
+        logger.info(
+            f"VettedPayTransactionEngine initialized with provider: {active_provider}, "
+            f"backups: {backup_providers}"
+        )
+    
+    def _load_rail(self, provider: str, config: Dict[str, Any]) -> PayoutProviderAdapter:
+        """
+        Load a specific payment rail.
+        
+        Args:
+            provider: Provider name
+            config: Provider configuration
+            
+        Returns:
+            Initialized rail adapter
+        """
         # Dynamic Provider Factory
-        if active_provider == "airwallex":
-            self.rail = AirwallexRail(provider_config)
-        elif active_provider == "nium":
+        if provider == "airwallex":
+            return AirwallexRail(config)
+        elif provider == "nium":
             # from .nium_rail import NiumRail
-            # self.rail = NiumRail(provider_config)
+            # return NiumRail(config)
             raise NotImplementedError("Nium integration is not yet active.")
-        elif active_provider == "wise":
+        elif provider == "wise":
             # from .wise_rail import WiseRail
-            # self.rail = WiseRail(provider_config)
+            # return WiseRail(config)
             raise NotImplementedError("Wise integration is not yet active.")
-        elif active_provider == "stablecoin":
+        elif provider == "stablecoin":
             # from .stablecoin_rail import StablecoinRail
-            # self.rail = StablecoinRail(provider_config)
+            # return StablecoinRail(config)
             raise NotImplementedError("Stablecoin integration is not yet active.")
         else:
-            raise ValueError(f"Unknown financial provider: {active_provider}")
-        
-        logger.info(f"VettedPayTransactionEngine initialized with provider: {active_provider}")
+            raise ValueError(f"Unknown financial provider: {provider}")
     
     def _map_rail_to_db_enum(self, rail: PayoutRail) -> DBPaymentRail:
         """Map PayoutRail enum to DBPaymentRail enum."""
@@ -183,7 +399,42 @@ class VettedPayTransactionEngine:
             f"via {self.active_provider} (idempotency: {idempotency_key[:16]}...)"
         )
         
-        # 3. Dispatch payload down the abstract rail
+        # 3. CIRCUIT BREAKER CHECK: Auto-failover if primary rail is down
+        selected_rail = self.active_provider
+        rails_to_try = [self.active_provider] + self.backup_providers
+        
+        # Remove rails with open circuits
+        available_rails = self.circuit_breaker.get_available_rails(rails_to_try)
+        
+        if not available_rails:
+            logger.error("CRITICAL: All payment rails have open circuits!")
+            return {
+                "success": False,
+                "error": "All payment rails are currently unavailable. Please try again later.",
+                "error_code": "ALL_RAILS_DOWN",
+                "idempotency_key": idempotency_key
+            }
+        
+        # Use first available rail
+        if available_rails[0] != self.active_provider:
+            logger.warning(
+                f"Circuit breaker: Failing over from {self.active_provider} "
+                f"to {available_rails[0]}"
+            )
+            selected_rail = available_rails[0]
+            # Hot-reload backup rail
+            try:
+                self.rail = self._load_rail(selected_rail, self.provider_config)
+            except Exception as load_error:
+                logger.error(f"Failed to load backup rail {selected_rail}: {load_error}")
+                return {
+                    "success": False,
+                    "error": f"Backup rail load failed: {str(load_error)}",
+                    "error_code": "BACKUP_RAIL_LOAD_ERROR",
+                    "idempotency_key": idempotency_key
+                }
+        
+        # 4. Dispatch payload down the abstract rail
         # Your engine passes the encrypted data without seeing the contents
         try:
             payment_result = await self.rail.execute_payout(
@@ -194,6 +445,16 @@ class VettedPayTransactionEngine:
                 idempotency_key=idempotency_key,
                 metadata=metadata
             )
+            
+            # CIRCUIT BREAKER: Record success
+            if payment_result.success:
+                self.circuit_breaker.record_success(selected_rail)
+            else:
+                # Record failure
+                await self.circuit_breaker.record_failure(
+                    selected_rail,
+                    payment_result.error_message or "Unknown error"
+                )
             
             # Convert PayoutResult to dict for client response
             result_dict = {
@@ -242,6 +503,12 @@ class VettedPayTransactionEngine:
             
         except Exception as exc:
             logger.error(f"Transfer processing failed: {exc}", exc_info=True)
+            
+            # CIRCUIT BREAKER: Record critical failure
+            await self.circuit_breaker.record_failure(
+                selected_rail,
+                f"Exception: {str(exc)}"
+            )
             
             # Update database transaction status to failed
             if self.db and db_transaction:

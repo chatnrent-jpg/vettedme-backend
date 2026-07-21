@@ -60,7 +60,7 @@ class VettedPayPayout(Base):
     failed_at = Column(DateTime(timezone=True), nullable=True)
     error_code = Column(String(100), nullable=True)
     error_message = Column(Text, nullable=True)
-    metadata = Column(JSONB, nullable=True)  # Additional payout details
+    transaction_metadata = Column(JSONB, nullable=True)  # Additional payout details
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     
@@ -154,7 +154,7 @@ class VettedPayTransaction(Base):
     zk_proof_verified = Column(Boolean, nullable=False, server_default='false')
     compliance_packet_id = Column(String(255), nullable=True)
     error_log = Column(Text, nullable=True)
-    metadata = Column(JSONB, nullable=True)
+    transaction_metadata = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     
