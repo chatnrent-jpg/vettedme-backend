@@ -37,8 +37,8 @@ VETTED is a **dual-engine trust infrastructure platform** that eliminates hiring
 
 ```bash
 # Clone the repository
-git clone https://github.com/vetted/vettedcare-backend.git
-cd vettedcare-backend
+git clone https://github.com/chatnrent-jpg/vettedme-backend.git
+cd vettedme-backend
 
 # Install dependencies
 npm install

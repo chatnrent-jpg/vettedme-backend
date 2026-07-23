@@ -71,6 +71,16 @@ credentials.json
 # Cache
 .cache/
 .parcel-cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.mypy_cache/
+
+# Separation leftovers (never commit)
+vettedme-backend-TEMP/
+_BACKUP_ORIGINAL*/
 
 # Storage (tax documents, uploads, etc.)
 storage/
