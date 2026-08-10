@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useEffect } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -15,46 +15,18 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import {
-  CalibrationAnalytics,
-  CandidateDataset,
-  CandidatePair,
   DIMENSIONS,
   DimensionScoreMap,
   PreferenceLabel,
   RubricDimensionKey,
-  ValidateResult,
-  ensureAssessmentSession,
-  fetchCandidateDataset,
-  submitValidation,
 } from "@/lib/rlhfApi";
 import { CalibrationAnalyticsDashboard } from "@/components/rlhf/CalibrationAnalyticsDashboard";
-
-type Side = "A" | "B";
-
-interface PairDraft {
-  scores: { A: DimensionScoreMap; B: DimensionScoreMap };
-  label: PreferenceLabel | null;
-  readA: boolean;
-  readB: boolean;
-}
-
-function emptyScores(): DimensionScoreMap {
-  return {
-    helpfulnessDirectness: null,
-    truthfulnessFactuality: null,
-    harmMitigationSafety: null,
-    toneFormatting: null,
-  };
-}
-
-function emptyDraft(): PairDraft {
-  return {
-    scores: { A: emptyScores(), B: emptyScores() },
-    label: null,
-    readA: false,
-    readB: false,
-  };
-}
+import {
+  AssessmentResult,
+  RlhfWorkspaceState,
+  Side,
+  useRlhfAssessment,
+} from "@/hooks/useRlhfAssessment";
 
 function scoresComplete(scores: DimensionScoreMap): boolean {
   return DIMENSIONS.every((d) => {
@@ -129,7 +101,6 @@ function ResponsePane({
   };
 
   useEffect(() => {
-    // Short responses still count as read
     const el = scrollerRef.current;
     if (!el || readComplete) return;
     if (el.scrollHeight <= el.clientHeight + 8) onReadComplete();
@@ -207,45 +178,44 @@ function ResponsePane({
   );
 }
 
-export function RlhfEvaluationWorkspace() {
-  const [dataset, setDataset] = useState<CandidateDataset | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, PairDraft>>({});
-  const [pairIndex, setPairIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [resultBanner, setResultBanner] = useState<string | null>(null);
-  const [calibration, setCalibration] =
-    useState<CalibrationAnalytics | null>(null);
-  const [evaluationStartedAt, setEvaluationStartedAt] = useState<string>("");
+export interface RlhfEvaluationWorkspaceProps {
+  workspace: RlhfWorkspaceState;
+  updateScore: (
+    pairId: string,
+    side: Side,
+    key: RubricDimensionKey,
+    value: number
+  ) => void;
+  submitAssessment: () => Promise<AssessmentResult | null>;
+  isSubmitting: boolean;
+  error: string | null;
+  result: AssessmentResult | null;
+}
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        setLoading(true);
-        const started = new Date().toISOString();
-        const data = await fetchCandidateDataset();
-        if (!alive) return;
-        setEvaluationStartedAt(started);
-        setDataset(data);
-        const initial: Record<string, PairDraft> = {};
-        data.pairs.forEach((p) => {
-          initial[p.pairId] = emptyDraft();
-        });
-        setDrafts(initial);
-      } catch (e: any) {
-        if (alive) setError(e?.message || "Failed to load evaluation dataset");
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+/** Presentational workspace driven by `useRlhfAssessment`. */
+export function RlhfEvaluationWorkspace({
+  workspace,
+  updateScore,
+  submitAssessment,
+  isSubmitting,
+  error,
+  result,
+}: RlhfEvaluationWorkspaceProps) {
+  const {
+    dataset,
+    drafts,
+    pairIndex,
+    loading,
+    calibration,
+    resultBanner,
+    allPairsReady,
+    setPairIndex,
+    markRead,
+    setPreference,
+    resetAfterResult,
+  } = workspace;
 
-  const pair: CandidatePair | null = dataset?.pairs[pairIndex] || null;
+  const pair = dataset?.pairs[pairIndex] || null;
   const draft = pair ? drafts[pair.pairId] : null;
 
   const pairReady = useMemo(() => {
@@ -257,121 +227,6 @@ export function RlhfEvaluationWorkspace() {
       scoresComplete(draft.scores.B)
     );
   }, [draft]);
-
-  const allPairsReady = useMemo(() => {
-    if (!dataset) return false;
-    return dataset.pairs.every((p) => {
-      const d = drafts[p.pairId];
-      return (
-        d &&
-        d.readA &&
-        d.readB &&
-        scoresComplete(d.scores.A) &&
-        scoresComplete(d.scores.B) &&
-        d.label
-      );
-    });
-  }, [dataset, drafts]);
-
-  const updateDraft = useCallback(
-    (pairId: string, patch: Partial<PairDraft>) => {
-      setDrafts((prev) => ({
-        ...prev,
-        [pairId]: { ...prev[pairId], ...patch },
-      }));
-    },
-    []
-  );
-
-  const setScore = (
-    pairId: string,
-    side: Side,
-    key: RubricDimensionKey,
-    value: number
-  ) => {
-    setDrafts((prev) => {
-      const current = prev[pairId] || emptyDraft();
-      return {
-        ...prev,
-        [pairId]: {
-          ...current,
-          scores: {
-            ...current.scores,
-            [side]: { ...current.scores[side], [key]: value },
-          },
-        },
-      };
-    });
-  };
-
-  const handleSubmit = async () => {
-    if (!dataset || !allPairsReady) return;
-    try {
-      setSubmitting(true);
-      setError(null);
-      setResultBanner(null);
-      setCalibration(null);
-      const session = await ensureAssessmentSession();
-      const submissions = dataset.pairs.map((p) => {
-        const d = drafts[p.pairId];
-        const toNums = (s: DimensionScoreMap) =>
-          Object.fromEntries(
-            DIMENSIONS.map((dim) => [dim.key, Number(s[dim.key])])
-          ) as Record<RubricDimensionKey, number>;
-        if (!d.readA || !d.readB) {
-          throw new Error(`Read receipts incomplete for ${p.pairId}`);
-        }
-        return {
-          pairId: p.pairId,
-          label: d.label as PreferenceLabel,
-          scores: { A: toNums(d.scores.A), B: toNums(d.scores.B) },
-          readReceipts: { readA: true as const, readB: true as const },
-        };
-      });
-
-      const json = await submitValidation({
-        token: session.token,
-        userId: session.userId,
-        evaluationStartedAt:
-          evaluationStartedAt || new Date().toISOString(),
-        submissions,
-      });
-
-      const r: ValidateResult = json.result || {
-        success: Boolean(json.pass),
-        hardFail: Boolean(
-          json.reason === "INSUFFICIENT_EVALUATION_TIME" ||
-            json.reason === "CRITICAL_SAFETY_GATE_VIOLATION"
-        ),
-        pass: Boolean(json.pass),
-        reason: json.reason,
-        scoring: { percent: json.finalScore },
-      };
-      if (r.calibration?.available) {
-        setCalibration(r.calibration);
-      }
-      if (r.hardFail) {
-        const reason = r.reason || json.reason || "";
-        setResultBanner(
-          reason === "INSUFFICIENT_EVALUATION_TIME"
-            ? "Submission flagged: insufficient evaluation time (speed-runner anomaly). Status set to FAILED."
-            : "Submission recorded. Critical policy alignment issue detected — status set to FAILED."
-        );
-      } else if (r.pass || json.pass) {
-        setResultBanner(
-          `Calibration passed (${r.scoring?.percent ?? json.finalScore ?? "—"}%). aiStatus advanced to ${json.status || "TIER1_PASSED"}.`
-        );
-      } else {
-        setResultBanner(
-          `Submission recorded (${r.scoring?.percent ?? json.finalScore ?? "—"}%). Below pass threshold — keep calibrating.`
-        );
-      }
-    } catch (e: any) {
-      setError(e?.message || "Submit failed");
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -390,8 +245,8 @@ export function RlhfEvaluationWorkspace() {
     );
   }
 
-  // Post-submit: replace workspace with interactive calibration analytics
-  if (calibration) {
+  if (calibration || result?.calibration) {
+    const cal = calibration || result!.calibration!;
     return (
       <div className="mx-auto max-w-7xl space-y-5 px-4 py-6 md:px-6">
         {error && (
@@ -399,21 +254,14 @@ export function RlhfEvaluationWorkspace() {
             {error}
           </div>
         )}
-        {resultBanner && (
+        {(resultBanner || result?.message) && (
           <div className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-950">
-            {resultBanner}
+            {resultBanner || result?.message}
           </div>
         )}
-        <CalibrationAnalyticsDashboard calibration={calibration} />
+        <CalibrationAnalyticsDashboard calibration={cal} />
         <div className="flex justify-end">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setCalibration(null);
-              setResultBanner(null);
-              setEvaluationStartedAt(new Date().toISOString());
-            }}
-          >
+          <Button variant="outline" onClick={resetAfterResult}>
             Review pairs again
           </Button>
         </div>
@@ -445,7 +293,6 @@ export function RlhfEvaluationWorkspace() {
         </div>
       </header>
 
-      {/* Subtle hard-gate guidance — no spoiler for adversarial pair */}
       <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-amber-950">
         <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
         <div className="text-sm leading-relaxed">
@@ -476,8 +323,8 @@ export function RlhfEvaluationWorkspace() {
           body={pair.responseA.text}
           scores={draft.scores.A}
           readComplete={draft.readA}
-          onReadComplete={() => updateDraft(pair.pairId, { readA: true })}
-          onScore={(key, value) => setScore(pair.pairId, "A", key, value)}
+          onReadComplete={() => markRead(pair.pairId, "A")}
+          onScore={(key, value) => updateScore(pair.pairId, "A", key, value)}
         />
         <ResponsePane
           side="B"
@@ -485,8 +332,8 @@ export function RlhfEvaluationWorkspace() {
           body={pair.responseB.text}
           scores={draft.scores.B}
           readComplete={draft.readB}
-          onReadComplete={() => updateDraft(pair.pairId, { readB: true })}
-          onScore={(key, value) => setScore(pair.pairId, "B", key, value)}
+          onReadComplete={() => markRead(pair.pairId, "B")}
+          onScore={(key, value) => updateScore(pair.pairId, "B", key, value)}
         />
       </div>
 
@@ -519,7 +366,7 @@ export function RlhfEvaluationWorkspace() {
                 key={value}
                 type="button"
                 disabled={!pairReady}
-                onClick={() => updateDraft(pair.pairId, { label: value })}
+                onClick={() => setPreference(pair.pairId, value)}
                 className={cn(
                   "rounded-lg border px-4 py-3 text-sm font-semibold transition-all",
                   !pairReady && "cursor-not-allowed opacity-45",
@@ -560,11 +407,13 @@ export function RlhfEvaluationWorkspace() {
         <div className="flex flex-col items-stretch gap-2 sm:items-end">
           <Button
             size="lg"
-            disabled={!allPairsReady || submitting}
-            onClick={handleSubmit}
+            disabled={!allPairsReady || isSubmitting}
+            onClick={() => {
+              void submitAssessment();
+            }}
             className="bg-teal-700 hover:bg-teal-800"
           >
-            {submitting ? (
+            {isSubmitting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Submitting…
@@ -596,4 +445,14 @@ export function RlhfEvaluationWorkspace() {
       )}
     </div>
   );
+}
+
+/** Convenience wrapper that owns the hook for standalone mounts. */
+export function RlhfEvaluationWorkspaceConnected({
+  userId = "YOUR_TEST_USER_ID",
+}: {
+  userId?: string;
+}) {
+  const assessment = useRlhfAssessment(userId);
+  return <RlhfEvaluationWorkspace {...assessment} />;
 }

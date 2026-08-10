@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "outDir": "./dist-rlhf-check"
+  },
+  "include": [
+    "src/modules/rlhf-core-rubric/**/*.ts",
+    "src/lib/prisma.ts",
+    "src/middleware/auth.ts",
+    "src/middleware/errorHandler.ts",
+    "src/utils/logger.ts"
+  ],
+  "exclude": ["node_modules", "dist", "frontend"]
+}
