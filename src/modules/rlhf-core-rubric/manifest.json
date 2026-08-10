@@ -1,0 +1,54 @@
+{
+  "moduleId": "rlhf-core-rubric",
+  "title": "Module 1: The RLHF Core Rubric",
+  "version": "1.0.0",
+  "description": "Foundational training on Reinforcement Learning from Human Feedback — how raters apply the four-dimension Core Rubric (Helpfulness & Directness, Truthfulness & Factuality, Harm Mitigation & Safety, Tone & Formatting) to preference data.",
+  "estimatedMinutes": 45,
+  "order": 1,
+  "lessons": [
+    {
+      "slug": "01-what-is-rlhf",
+      "title": "What is RLHF?",
+      "file": "01-what-is-rlhf.md",
+      "order": 1,
+      "estimatedMinutes": 8
+    },
+    {
+      "slug": "02-preference-pairs",
+      "title": "Preference Pairs & Ranking",
+      "file": "02-preference-pairs.md",
+      "order": 2,
+      "estimatedMinutes": 10
+    },
+    {
+      "slug": "03-core-rubric-dimensions",
+      "title": "Core Rubric Dimensions",
+      "file": "03-core-rubric-dimensions.md",
+      "order": 3,
+      "estimatedMinutes": 12
+    },
+    {
+      "slug": "04-scoring-calibration",
+      "title": "Scoring & Calibration",
+      "file": "04-scoring-calibration.md",
+      "order": 4,
+      "estimatedMinutes": 10
+    },
+    {
+      "slug": "05-common-failure-modes",
+      "title": "Common Failure Modes",
+      "file": "05-common-failure-modes.md",
+      "order": 5,
+      "estimatedMinutes": 5
+    },
+    {
+      "slug": "06-preference-pair-drill",
+      "title": "Preference Pair Drill",
+      "file": "06-preference-pair-drill.md",
+      "order": 6,
+      "estimatedMinutes": 15
+    }
+  ],
+  "rubricFile": "rubric.md",
+  "datasetFile": "preference-pairs.json"
+}

@@ -1,12 +1,10 @@
 import { Request, Response } from 'express';
-import { PrismaClient, ActionType } from '@prisma/client';
+import { ActionType } from '@prisma/client';
 import crypto from 'crypto';
 import { logAuditEvent } from '../utils/auditLogger';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../lib/prisma';
 /**
  * Airwallex Deposit Webhook Handler
  * Handles payment.inbound_transfer.success events when enterprise clients fund their escrow

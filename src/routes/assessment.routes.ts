@@ -1,15 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
+import { prisma } from '../lib/prisma';
 import {
   skillAssessmentEngine,
   AssessmentTier,
 } from '../services/vettedme/SkillAssessmentEngine';
-import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
 
 const router = Router();
-const prisma = new PrismaClient();
-
 /**
  * POST /api/v1/assessment/start
  * Start the three-tier skill assessment journey

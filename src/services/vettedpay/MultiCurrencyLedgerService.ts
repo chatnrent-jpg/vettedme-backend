@@ -1,9 +1,6 @@
-import { PrismaClient } from '@prisma/client';
 import { logger } from '../../utils/logger';
 import { airwallexService } from './AirwallexService';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../lib/prisma';
 interface CreateWalletRequest {
   walletType: string;
   ownerId: string;

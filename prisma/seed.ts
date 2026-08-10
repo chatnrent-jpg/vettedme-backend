@@ -1,9 +1,6 @@
-import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../src/lib/prisma';
 /**
  * VETTED Premium Investor Demo Seed Script
  * 

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { auditLogService } from '../services/audit/AuditLogService';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
+import { prisma } from '../lib/prisma';
 
 /**
  * GET /api/v1/audit/resource/:resourceId
@@ -168,8 +169,6 @@ export const getComplianceReport = async (req: Request, res: Response) => {
     if (userRole !== 'ADMIN') {
       // Check if user is part of this contract
       const { PrismaClient } = require('@prisma/client');
-      const prisma = new PrismaClient();
-      
       const contract = await prisma.contract.findUnique({
         where: { id: contractId },
       });
@@ -224,8 +223,6 @@ export const getAuditStats = async (req: Request, res: Response) => {
     }
 
     const { PrismaClient } = require('@prisma/client');
-    const prisma = new PrismaClient();
-
     // Get statistics
     const [
       totalLogs,

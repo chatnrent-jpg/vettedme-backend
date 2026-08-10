@@ -87,11 +87,14 @@ export class AIVivaService {
   private activeSessions: Map<string, VivaSession> = new Map();
 
   constructor() {
+    // Local/dev boot must not crash when OPENAI_API_KEY is unset.
     this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY || '',
+      apiKey: process.env.OPENAI_API_KEY || 'sk-local-dev-placeholder',
     });
 
-    logger.info('AIVivaService initialized');
+    logger.info('AIVivaService initialized', {
+      openaiConfigured: Boolean(process.env.OPENAI_API_KEY),
+    });
   }
 
   /**

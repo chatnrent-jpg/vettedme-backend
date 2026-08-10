@@ -1,9 +1,7 @@
-import { PrismaClient, ActionType } from '@prisma/client';
+import { ActionType } from '@prisma/client';
 import crypto from 'crypto';
 import { logger } from '../../utils/logger';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../lib/prisma';
 interface AuditLogEntry {
   userId?: string;
   userEmail?: string;

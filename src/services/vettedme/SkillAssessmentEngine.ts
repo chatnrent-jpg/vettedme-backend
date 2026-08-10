@@ -1,10 +1,9 @@
-import { PrismaClient } from '@prisma/client';
+import { AIStatus } from '@prisma/client';
 import { logger } from '../../utils/logger';
 import { githubAuditService } from './GitHubAuditService';
 import { sandboxExecutionService } from './SandboxExecutionService';
 import { aiVivaService } from './AIVivaService';
-
-const prisma = new PrismaClient();
+import { prisma } from '../../lib/prisma';
 
 export enum AssessmentTier {
   TIER_1_PORTFOLIO_AUDIT = 'TIER_1_PORTFOLIO_AUDIT',
@@ -106,6 +105,13 @@ export class SkillAssessmentEngine {
       },
     });
 
+    await this.syncUserAIProgress(userId, {
+      aiStatus: AIStatus.TIER1_IN_PROGRESS,
+      aiSessionId: sessionId,
+      aiLastAttemptAt: new Date(),
+      aiFailureReason: null,
+    });
+
     return session;
   }
 
@@ -175,6 +181,14 @@ export class SkillAssessmentEngine {
         },
       });
 
+      await this.syncUserAIProgress(session.userId, {
+        aiStatus: passed ? AIStatus.TIER1_PASSED : AIStatus.FAILED,
+        aiTier1Score: score,
+        aiSessionId: session.sessionId,
+        aiLastAttemptAt: new Date(),
+        aiFailureReason: passed ? null : 'Tier 1 portfolio audit below 70',
+      });
+
       logger.info('Tier 1 completed', {
         userId: session.userId,
         passed,
@@ -184,6 +198,11 @@ export class SkillAssessmentEngine {
 
       return result;
     } catch (error: any) {
+      await this.syncUserAIProgress(session.userId, {
+        aiStatus: AIStatus.FAILED,
+        aiFailureReason: `Tier 1 error: ${error.message}`,
+        aiLastAttemptAt: new Date(),
+      });
       logger.error('Tier 1 audit failed', {
         error: error.message,
         userId: session.userId,
@@ -204,6 +223,12 @@ export class SkillAssessmentEngine {
       userId: session.userId,
       sessionId: session.sessionId,
       challengeId,
+    });
+
+    await this.syncUserAIProgress(session.userId, {
+      aiStatus: AIStatus.TIER2_IN_PROGRESS,
+      aiSessionId: session.sessionId,
+      aiLastAttemptAt: new Date(),
     });
 
     try {
@@ -311,6 +336,14 @@ export class SkillAssessmentEngine {
         },
       });
 
+      await this.syncUserAIProgress(session.userId, {
+        aiStatus: passed ? AIStatus.TIER2_PASSED : AIStatus.FAILED,
+        aiTier2Score: score,
+        aiSessionId: session.sessionId,
+        aiLastAttemptAt: new Date(),
+        aiFailureReason: passed ? null : 'Tier 2 code lab below pass threshold',
+      });
+
       logger.info('Tier 2 completed', {
         userId: session.userId,
         passed,
@@ -320,6 +353,11 @@ export class SkillAssessmentEngine {
 
       return result;
     } catch (error: any) {
+      await this.syncUserAIProgress(session.userId, {
+        aiStatus: AIStatus.FAILED,
+        aiFailureReason: `Tier 2 error: ${error.message}`,
+        aiLastAttemptAt: new Date(),
+      });
       logger.error('Tier 2 processing failed', {
         error: error.message,
         userId: session.userId,
@@ -339,6 +377,12 @@ export class SkillAssessmentEngine {
     logger.info('Running Tier 3: AI Technical Viva', {
       userId: session.userId,
       sessionId: session.sessionId,
+    });
+
+    await this.syncUserAIProgress(session.userId, {
+      aiStatus: AIStatus.TIER3_IN_PROGRESS,
+      aiSessionId: session.sessionId,
+      aiLastAttemptAt: new Date(),
     });
 
     try {
@@ -450,6 +494,14 @@ export class SkillAssessmentEngine {
         },
       });
 
+      await this.syncUserAIProgress(session.userId, {
+        aiStatus: passed ? AIStatus.TIER3_PASSED : AIStatus.FAILED,
+        aiTier3Score: score,
+        aiSessionId: session.sessionId,
+        aiLastAttemptAt: new Date(),
+        aiFailureReason: passed ? null : 'Tier 3 AI viva below 90',
+      });
+
       logger.info('Tier 3 completed', {
         userId: session.userId,
         passed,
@@ -459,6 +511,11 @@ export class SkillAssessmentEngine {
 
       return result;
     } catch (error: any) {
+      await this.syncUserAIProgress(session.userId, {
+        aiStatus: AIStatus.FAILED,
+        aiFailureReason: `Tier 3 error: ${error.message}`,
+        aiLastAttemptAt: new Date(),
+      });
       logger.error('Tier 3 processing failed', {
         error: error.message,
         userId: session.userId,
@@ -488,6 +545,14 @@ export class SkillAssessmentEngine {
       session.tier3Result.passed;
 
     if (!allPassed) {
+      await this.syncUserAIProgress(session.userId, {
+        aiStatus: AIStatus.FAILED,
+        aiTier1Score: session.tier1Result.score,
+        aiTier2Score: session.tier2Result.score,
+        aiTier3Score: session.tier3Result.score,
+        aiFailureReason: 'One or more assessment tiers failed',
+        aiLastAttemptAt: new Date(),
+      });
       logger.warn('Assessment failed', {
         userId: session.userId,
         tier1: session.tier1Result.passed,
@@ -521,6 +586,18 @@ export class SkillAssessmentEngine {
       },
     });
 
+    await this.syncUserAIProgress(session.userId, {
+      aiStatus: AIStatus.COMPLETED,
+      aiScore: overallScore,
+      aiTier1Score: session.tier1Result.score,
+      aiTier2Score: session.tier2Result.score,
+      aiTier3Score: session.tier3Result.score,
+      aiSessionId: session.sessionId,
+      aiCompletedAt: new Date(),
+      aiLastAttemptAt: new Date(),
+      aiFailureReason: null,
+    });
+
     logger.info('VettedME Passport updated', {
       userId: session.userId,
       overallScore,
@@ -530,6 +607,38 @@ export class SkillAssessmentEngine {
       passportIssued: true,
       trustScore: overallScore,
     };
+  }
+
+  /**
+   * Persist AI assessment progress onto the User record (ai_status attributes).
+   */
+  private async syncUserAIProgress(
+    userId: string,
+    data: {
+      aiStatus?: AIStatus;
+      aiScore?: number;
+      aiTier1Score?: number;
+      aiTier2Score?: number;
+      aiTier3Score?: number;
+      aiSessionId?: string | null;
+      aiLastAttemptAt?: Date | null;
+      aiCompletedAt?: Date | null;
+      aiFailureReason?: string | null;
+    }
+  ): Promise<void> {
+    try {
+      await prisma.user.update({
+        where: { id: userId },
+        data,
+      });
+    } catch (error: any) {
+      // Justice: never invent success — log and continue assessment path.
+      logger.error('Failed to sync user AI progress', {
+        userId,
+        error: error?.message,
+        aiStatus: data.aiStatus,
+      });
+    }
   }
 
   // ========================================================================

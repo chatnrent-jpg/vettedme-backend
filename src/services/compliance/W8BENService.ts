@@ -1,11 +1,8 @@
 import { PDFDocument, PDFTextField, PDFCheckBox } from 'pdf-lib';
-import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../../utils/logger';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../lib/prisma';
 interface W8BENData {
   fullName: string;
   citizenship: string;

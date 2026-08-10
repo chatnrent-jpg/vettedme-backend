@@ -35,6 +35,17 @@ model User {
   isActive          Boolean   @default(true)
   isVerified        Boolean   @default(false)
   lastLoginAt       DateTime?
+
+  // VettedME AI Training Tracking Fields
+  aiStatus          AIStatus  @default(NOT_STARTED)
+  aiScore           Int       @default(0) // Blended score 0-100
+  aiTier1Score       Int       @default(0)
+  aiTier2Score       Int       @default(0)
+  aiTier3Score       Int       @default(0)
+  aiSessionId       String?   // Links to the active assessment/viva session
+  aiLastAttemptAt   DateTime?
+  aiCompletedAt     DateTime?
+  aiFailureReason   String?   // Records critical fail causes (e.g. safety bypass)
   
   // Relations
   vettedMEPassport         VettedMEPassport?
@@ -52,6 +63,7 @@ model User {
   @@index([email])
   @@index([role])
   @@index([isActive])
+  @@index([aiStatus])
   @@map("users")
 }
 
@@ -1257,6 +1269,22 @@ enum SalesPipelineStatus {
   CONTRACT_PENDING      // Contract sent, awaiting signature
   ENTERPRISE_ACTIVE     // Contract signed, client is active
   LOST                  // Lead went cold or disqualified
+}
+
+// ============================================================================
+// VETTEDME AI TRAINING STATUS
+// ============================================================================
+
+enum AIStatus {
+  NOT_STARTED
+  TIER1_IN_PROGRESS
+  TIER1_PASSED
+  TIER2_IN_PROGRESS
+  TIER2_PASSED
+  TIER3_IN_PROGRESS
+  TIER3_PASSED
+  COMPLETED
+  FAILED
 }
 
 // ============================================================================

@@ -1,10 +1,7 @@
-import { PrismaClient } from '@prisma/client';
 import { logger } from '../../utils/logger';
 import { smileIDService } from '../vettedme/SmileIDService';
 import { airwallexService } from '../vettedpay/AirwallexService';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../lib/prisma';
 interface VettedMEVerificationEvent {
   userId: string;
   sessionId: string;

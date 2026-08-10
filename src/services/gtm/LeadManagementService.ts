@@ -1,8 +1,5 @@
-import { PrismaClient } from '@prisma/client';
 import { logger } from '../../utils/logger';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../../lib/prisma';
 interface CreateLeadRequest {
   firstName: string;
   lastName: string;

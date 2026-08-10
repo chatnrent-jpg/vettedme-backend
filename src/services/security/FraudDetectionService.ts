@@ -1,8 +1,7 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { logger } from '../../utils/logger';
 import { AirwallexService } from '../vettedpay/AirwallexService';
-
-const prisma = new PrismaClient();
+import { prisma } from '../../lib/prisma';
 const airwallexService = new AirwallexService();
 
 interface BiometricFailureEvent {

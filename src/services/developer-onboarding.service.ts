@@ -16,13 +16,11 @@
  * ============================================================================
  */
 
-import { PrismaClient, DeveloperOnboardingStatus, AuditAction } from '@prisma/client';
+import { DeveloperOnboardingStatus, AuditAction } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { logAudit } from '../utils/audit-logger';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../lib/prisma';
 // ============================================================================
 // State Machine Configuration
 // ============================================================================

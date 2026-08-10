@@ -1,10 +1,8 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { W8BENService } from '../services/compliance/W8BENService';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 const w8benService = new W8BENService();
 
 /**

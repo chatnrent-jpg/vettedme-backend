@@ -1,11 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { airwallexService } from '../services/vettedpay/AirwallexService';
-import { PrismaClient } from '@prisma/client';
-
+import { prisma } from '../lib/prisma';
 const router = Router();
-const prisma = new PrismaClient();
-
 /**
  * POST /api/v1/vettedpay/account/create
  * Create Airwallex sub-account for buyer

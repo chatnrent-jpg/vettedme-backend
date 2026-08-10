@@ -1,13 +1,12 @@
 import { Request, Response } from 'express';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { SmileIDService } from '../services/vettedme/SmileIDService';
 import { AirwallexService } from '../services/vettedpay/AirwallexService';
 import { FraudDetectionService } from '../services/security/FraudDetectionService';
 import { W8BENService } from '../services/compliance/W8BENService';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 const smileIdService = new SmileIDService();
 const airwallexService = new AirwallexService();
 const fraudDetection = new FraudDetectionService();

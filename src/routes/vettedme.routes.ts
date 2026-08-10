@@ -1,11 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { smileIDService } from '../services/vettedme/SmileIDService';
-import { PrismaClient } from '@prisma/client';
-
+import { prisma } from '../lib/prisma';
 const router = Router();
-const prisma = new PrismaClient();
-
 /**
  * POST /api/v1/vettedme/verification/initiate
  * Start biometric verification process

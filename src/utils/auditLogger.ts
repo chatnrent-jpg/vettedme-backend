@@ -1,10 +1,8 @@
 import crypto from 'crypto';
-import { PrismaClient, ActionType } from '@prisma/client';
+import { ActionType } from '@prisma/client';
 import { logger } from './logger';
 import { auditLogService } from '../services/audit/AuditLogService';
-
-const prisma = new PrismaClient();
-
+import { prisma } from '../lib/prisma';
 /**
  * Global Audit Logger Utility
  * 

@@ -1,10 +1,8 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { FraudDetectionService } from '../services/security/FraudDetectionService';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 const fraudDetection = new FraudDetectionService();
 
 /**
