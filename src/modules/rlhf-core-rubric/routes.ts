@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { authenticate } from "../../middleware/auth";
 import {
   getLessonBySlug,
@@ -6,12 +6,36 @@ import {
   getPreferencePair,
   getPreferencePairs,
   getRubric,
+  getSupervisorAnalytics,
   listLessons,
   updateProgress,
   validateAssessment,
 } from "./controller";
+import { validateAssessmentSchema } from "./validation";
 
 const router = Router();
+
+// Middleware helper wrapper to catch schema validation parsing exceptions
+const validateBody = (schema: typeof validateAssessmentSchema) => {
+  return async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      await schema.parseAsync({ body: req.body });
+      next();
+    } catch (error: any) {
+      const issues = error?.issues || error?.errors || [];
+      res.status(400).json({
+        error: "Validation failed",
+        details: issues.map(
+          (e: any) => `${(e.path || []).join(".")}: ${e.message}`
+        ),
+      });
+    }
+  };
+};
 
 router.get("/", getModuleOverview);
 router.get("/lessons", listLessons);
@@ -75,9 +99,18 @@ router.get("/validate", (_req, res) => {
   res.status(200).json(payload);
 });
 
-// Endpoint: POST /api/v1/modules/rlhf-core-rubric/validate
-router.post("/validate", authenticate, validateAssessment);
+// Protected Endpoint with strict Zod parsing validation middleware layer
+router.post(
+  "/validate",
+  authenticate,
+  validateBody(validateAssessmentSchema),
+  validateAssessment
+);
 
 router.post("/progress", authenticate, updateProgress);
+
+// Administrative Endpoint: GET /api/v1/modules/rlhf-core-rubric/analytics
+// Auth middleware + ADMIN role check inside getSupervisorAnalytics
+router.get("/analytics", authenticate, getSupervisorAnalytics);
 
 export default router;

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
+import readline from "readline";
 import { AIStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler, AppError } from "../../middleware/errorHandler";
@@ -13,6 +14,22 @@ import {
   rlhfTelemetry,
 } from "./telemetry";
 import { buildCalibrationAnalytics } from "./calibration";
+
+/** Compact admin-facing names for rubric dimensions. */
+const DIMENSION_ALIAS: Record<string, string> = {
+  helpfulnessDirectness: "helpfulness",
+  truthfulnessFactuality: "factuality",
+  harmMitigationSafety: "safety",
+  toneFormatting: "tone",
+  helpfulness: "helpfulness",
+  factuality: "factuality",
+  safety: "safety",
+  tone: "tone",
+};
+
+function aliasDimension(dim: string): string {
+  return DIMENSION_ALIAS[dim] || dim;
+}
 
 type CompactScores = {
   helpfulness: number;
@@ -643,3 +660,304 @@ export const updateProgress = asyncHandler(
     });
   }
 );
+
+type SupervisorTelemetryBucket = {
+  totalPairsReviewed: number;
+  avgElapsedSeconds: number;
+  elapsedSamples: number;
+  deltasAccumulator: Record<string, number>;
+  speedrunFlags: number;
+  hardFailSafety: number;
+  gradedAttempts: number;
+  passedAttempts: number;
+};
+
+/**
+ * Supervisor Admin Data Table — joins Postgres AI profile fields with
+ * streaming JSONL rater telemetry for pass rates, speedrun flags, and
+ * per-dimension calibration drift.
+ *
+ * GET /api/v1/modules/rlhf-core-rubric/analytics
+ */
+export const getSupervisorAnalytics = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    if (req.user?.role !== "ADMIN") {
+      res.status(403).json({ error: "Unauthorized: Admin access required" });
+      return;
+    }
+
+    const logFilePath = path.join(
+      process.cwd(),
+      "logs",
+      "rlhf-telemetry",
+      "rlhf-rater-telemetry.jsonl"
+    );
+
+    // 1. Parse the Telemetry Log File row-by-row safely if it exists
+    const telemetrySummary: Record<string, SupervisorTelemetryBucket> = {};
+
+    const ensureBucket = (userId: string): SupervisorTelemetryBucket => {
+      if (!telemetrySummary[userId]) {
+        telemetrySummary[userId] = {
+          totalPairsReviewed: 0,
+          avgElapsedSeconds: 0,
+          elapsedSamples: 0,
+          deltasAccumulator: {},
+          speedrunFlags: 0,
+          hardFailSafety: 0,
+          gradedAttempts: 0,
+          passedAttempts: 0,
+        };
+      }
+      return telemetrySummary[userId];
+    };
+
+    const accumulateSideDeltas = (
+      bucket: SupervisorTelemetryBucket,
+      sideDeltas: Record<string, number> | undefined
+    ) => {
+      if (!sideDeltas || typeof sideDeltas !== "object") return;
+      Object.entries(sideDeltas).forEach(([dim, val]) => {
+        if (typeof val !== "number" || !Number.isFinite(val)) return;
+        const key = aliasDimension(dim);
+        if (!bucket.deltasAccumulator[key]) bucket.deltasAccumulator[key] = 0;
+        bucket.deltasAccumulator[key] += Math.abs(val);
+      });
+    };
+
+    if (fs.existsSync(logFilePath)) {
+      const fileStream = fs.createReadStream(logFilePath);
+      const rl = readline.createInterface({
+        input: fileStream,
+        crlfDelay: Infinity,
+      });
+
+      for await (const line of rl) {
+        if (!line.trim()) continue;
+        try {
+          const entry = JSON.parse(line);
+          const userId = entry?.userId;
+          if (!userId || typeof userId !== "string") continue;
+
+          const userStats = ensureBucket(userId);
+          const elapsed =
+            typeof entry.elapsedSeconds === "number" &&
+            Number.isFinite(entry.elapsedSeconds)
+              ? entry.elapsedSeconds
+              : null;
+
+          if (elapsed !== null) {
+            userStats.elapsedSamples += 1;
+            userStats.avgElapsedSeconds =
+              (userStats.avgElapsedSeconds * (userStats.elapsedSamples - 1) +
+                elapsed) /
+              userStats.elapsedSamples;
+          }
+
+          const eventType = entry.eventType as string | undefined;
+
+          if (eventType === "HARD_FAIL_INSUFFICIENT_TIME") {
+            userStats.speedrunFlags += 1;
+          } else if (
+            elapsed !== null &&
+            elapsed < 45 &&
+            (eventType === "VALIDATION_GRADED" ||
+              eventType === "HARD_FAIL_SAFETY")
+          ) {
+            // Justice: treat sub-45s graded attempts as speedrun signals too
+            userStats.speedrunFlags += 1;
+          }
+
+          if (eventType === "HARD_FAIL_SAFETY") {
+            userStats.hardFailSafety += 1;
+          }
+
+          if (
+            eventType === "VALIDATION_GRADED" ||
+            eventType === "HARD_FAIL_SAFETY"
+          ) {
+            userStats.gradedAttempts += 1;
+            if (entry.pass === true) userStats.passedAttempts += 1;
+          }
+
+          // Native VettedME telemetry: pairDeltas[].dimensionDeltas[]
+          if (Array.isArray(entry.pairDeltas)) {
+            for (const pair of entry.pairDeltas) {
+              userStats.totalPairsReviewed += 1;
+              const dims = Array.isArray(pair?.dimensionDeltas)
+                ? pair.dimensionDeltas
+                : [];
+              for (const d of dims) {
+                const key = aliasDimension(String(d?.dimension || ""));
+                const delta = Number(d?.delta);
+                if (!key || !Number.isFinite(delta)) continue;
+                if (!userStats.deltasAccumulator[key]) {
+                  userStats.deltasAccumulator[key] = 0;
+                }
+                userStats.deltasAccumulator[key] += Math.abs(delta);
+              }
+            }
+            continue;
+          }
+
+          // Legacy / alternate shape: { pairId, elapsedSeconds, deltas: { responseA, responseB } }
+          if (entry.deltas?.responseA || entry.deltas?.responseB) {
+            userStats.totalPairsReviewed += 1;
+            accumulateSideDeltas(userStats, entry.deltas.responseA);
+            accumulateSideDeltas(userStats, entry.deltas.responseB);
+          }
+        } catch (parseErr) {
+          console.error("Skipping malformed telemetry line item:", parseErr);
+        }
+      }
+    }
+
+    const telemetryUserIds = Object.keys(telemetrySummary);
+
+    // 2. Fetch live user statuses from PostgreSQL via Prisma (AI-active + telemetry hits)
+    const users = await prisma.user.findMany({
+      where: {
+        OR: [
+          { aiStatus: { not: AIStatus.NOT_STARTED } },
+          { aiLastAttemptAt: { not: null } },
+          ...(telemetryUserIds.length
+            ? [{ id: { in: telemetryUserIds } }]
+            : []),
+        ],
+      },
+      select: {
+        id: true,
+        email: true,
+        aiStatus: true,
+        aiScore: true,
+        aiFailureReason: true,
+        aiLastAttemptAt: true,
+      },
+      orderBy: [{ aiLastAttemptAt: "desc" }, { email: "asc" }],
+    });
+
+    // Quick-lookup map for database fields indexed by user ID
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    type ProfileRow = (typeof users)[number];
+    const tableRows: ProfileRow[] = [...users];
+
+    // Surface telemetry-only ids that somehow lack a user row (should be rare)
+    for (const tid of telemetryUserIds) {
+      if (!userMap.has(tid)) {
+        // Justice: do not invent profile fields — emit a sparse row keyed by id
+        tableRows.push({
+          id: tid,
+          email: `(missing-user:${tid})`,
+          aiStatus: AIStatus.NOT_STARTED,
+          aiScore: 0,
+          aiFailureReason: null,
+          aiLastAttemptAt: null,
+        });
+      }
+    }
+
+    // 3. Synthesize DB rows + disk telemetry into the admin data table
+    const unifiedDataTable = tableRows.map((user) => {
+      const logMetrics = telemetrySummary[user.id] || {
+        totalPairsReviewed: 0,
+        avgElapsedSeconds: 0,
+        elapsedSamples: 0,
+        deltasAccumulator: {} as Record<string, number>,
+        speedrunFlags: 0,
+        hardFailSafety: 0,
+        gradedAttempts: 0,
+        passedAttempts: 0,
+      };
+
+      // Averaged drift per dimension (closer to 0 = better calibration)
+      // Denominator: pairs × 2 sides (A/B), matching the reference admin formula.
+      const calibrationDrift: Record<string, number> = {};
+      if (logMetrics.totalPairsReviewed > 0) {
+        Object.entries(logMetrics.deltasAccumulator).forEach(
+          ([dim, totalDrift]) => {
+            calibrationDrift[dim] = Number(
+              (
+                Number(totalDrift) /
+                (logMetrics.totalPairsReviewed * 2)
+              ).toFixed(2)
+            );
+          }
+        );
+      }
+
+      const strugglingDimensions = Object.entries(calibrationDrift)
+        .filter(([, drift]) => drift > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([dim]) => dim);
+
+      return {
+        id: user.id,
+        email: user.email,
+        status: user.aiStatus,
+        score: user.aiScore,
+        failureReason: user.aiFailureReason,
+        lastAttemptAt: user.aiLastAttemptAt,
+        metrics: {
+          pairsEvaluated: logMetrics.totalPairsReviewed,
+          averageTimeSeconds: Math.round(logMetrics.avgElapsedSeconds),
+          averageAbsoluteDrift: calibrationDrift,
+          strugglingDimensions,
+          speedrunFlag: logMetrics.speedrunFlags > 0,
+          speedrunCount: logMetrics.speedrunFlags,
+          hardFailSafetyCount: logMetrics.hardFailSafety,
+          gradedAttempts: logMetrics.gradedAttempts,
+          passRate:
+            logMetrics.gradedAttempts > 0
+              ? Number(
+                  (
+                    (logMetrics.passedAttempts / logMetrics.gradedAttempts) *
+                    100
+                  ).toFixed(1)
+                )
+              : null,
+        },
+      };
+    });
+
+    const passed = unifiedDataTable.filter(
+      (c) =>
+        c.status === AIStatus.TIER1_PASSED ||
+        c.status === AIStatus.TIER2_PASSED ||
+        c.status === AIStatus.TIER3_PASSED ||
+        c.status === AIStatus.COMPLETED
+    ).length;
+    const failed = unifiedDataTable.filter(
+      (c) => c.status === AIStatus.FAILED
+    ).length;
+    const speedrunners = unifiedDataTable.filter(
+      (c) => c.metrics.speedrunFlag
+    ).length;
+
+    res.status(200).json({
+      timestamp: new Date().toISOString(),
+      totalTrackedCandidates: unifiedDataTable.length,
+      summary: {
+        passed,
+        failed,
+        speedrunners,
+        passRatePercent:
+          unifiedDataTable.length > 0
+            ? Number(((passed / unifiedDataTable.length) * 100).toFixed(1))
+            : 0,
+      },
+      candidates: unifiedDataTable,
+    });
+  } catch (error) {
+    console.error("Supervisor extraction engine failed:", error);
+    logger.error("Supervisor extraction engine failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    res
+      .status(500)
+      .json({ error: "Failed to extract administrative analytics data." });
+  }
+};
