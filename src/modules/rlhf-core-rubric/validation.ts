@@ -130,3 +130,51 @@ export function evaluateTimingGate(
     minRequiredSeconds: MIN_EVALUATION_SECONDS,
   };
 }
+
+// ---------------------------------------------------------------------------
+// NICTM / Uromi — candidate ingestion & Tier 2 viva session start
+// ---------------------------------------------------------------------------
+
+/** NICTM department enum — keep in lockstep with Prisma `NictmDepartment`. */
+export const NictmDepartmentSchema = z.enum([
+  "MECHATRONICS_ENGINEERING",
+  "COMPUTER_SCIENCE",
+  "CYBER_SECURITY_DATA_PROTECTION",
+  "CIVIL_ENGINEERING",
+  "QUANTITY_SURVEYING",
+  "BUILDING_TECHNOLOGY",
+  "EXTERNAL_TALENT",
+]);
+
+export type NictmDepartment = z.infer<typeof NictmDepartmentSchema>;
+
+/**
+ * Request validation for student onboarding / starting a Tier 2 viva session.
+ * Zod middleware expects `{ body: req.body }` (same pattern as validateAssessmentSchema).
+ */
+export const startVivaSessionSchema = z.object({
+  body: z.object({
+    fullName: z.string().min(3, "Full name must be at least 3 characters long"),
+    email: z.string().email("Invalid email address format"),
+    phoneNumber: z.string().min(10, "Phone number must be valid"),
+    department: NictmDepartmentSchema,
+    isNictmStudent: z.boolean().default(true),
+    matricNumber: z.string().optional(),
+    stationNumber: z.number().int().positive("Station number must be valid"),
+    rollingMaeScore: z.number().min(0, "MAE score cannot be negative"),
+  }),
+});
+
+export type StartVivaSessionInput = z.infer<typeof startVivaSessionSchema>;
+export type StartVivaSessionBody = StartVivaSessionInput["body"];
+
+/** Parse viva start payload (rejects before DB / session work). */
+export function parseStartVivaSessionBody(body: unknown): StartVivaSessionBody {
+  const parsed = startVivaSessionSchema.safeParse({ body });
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const path = issue?.path?.filter((p) => p !== "body").join(".") || "body";
+    throw new Error(`${path}: ${issue?.message || "invalid payload"}`);
+  }
+  return parsed.data.body;
+}
