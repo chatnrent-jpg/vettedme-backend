@@ -109,6 +109,7 @@ app.get('/', (req, res) => {
           '/api/v1/modules/rlhf-core-rubric/dataset/preference-pairs?mode=candidate',
         validate: 'POST /api/v1/modules/rlhf-core-rubric/validate',
         vivaInitialize: 'POST /api/rlhf/viva/initialize',
+        vivaStream: 'WS /api/rlhf/viva/stream?evaluationId=<uuid>',
         analytics: 'GET /api/v1/modules/rlhf-core-rubric/analytics',
       },
     },
