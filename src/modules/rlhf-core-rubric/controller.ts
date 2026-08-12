@@ -1082,3 +1082,89 @@ export const initializeVivaSession = async (
     });
   }
 };
+
+/**
+ * POST /api/rlhf/viva/:id/evaluate
+ * ToT audits transcript, scores defense resilience, and finalizes certification.
+ * Body validated by evaluateVivaSessionSchema (Zod) before this handler runs.
+ */
+export const evaluateVivaSession = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const { id } = req.params;
+  const { defenseScore, logicalConsistency, supervisorNotes } = req.body as {
+    defenseScore: number;
+    logicalConsistency: number;
+    supervisorNotes?: string;
+  };
+
+  try {
+    // 1. Update the Evaluation row with official scores and supervisor sign-off notes
+    const evaluation = await prisma.candidateEvaluation.update({
+      where: { id },
+      data: {
+        defenseScore,
+        // Justice: use nullish coalesce — 0 is a valid consistency score
+        logicalConsistency: logicalConsistency ?? 50.0,
+        supervisorNotes: supervisorNotes ?? null,
+      },
+    });
+
+    // 2. Compute if the candidate passed based on their total combined evaluation profile
+    const passingThreshold = 75.0;
+    const isPassing =
+      defenseScore >= passingThreshold && evaluation.rollingMaeScore <= 0.1;
+
+    // 3. If they pass, update their Master Candidate Profile status to certified
+    const updatedCandidate = await prisma.candidate.update({
+      where: { id: evaluation.candidateId },
+      data: {
+        currentTier: isPassing
+          ? EvaluationTier.TIER_3_PRODUCTION_READY
+          : EvaluationTier.TIER_2_INTERACTIVE_VIVA,
+        isCertified: isPassing,
+      },
+    });
+
+    logger.info("Uromi viva ToT evaluation submitted", {
+      evaluationId: id,
+      candidateId: updatedCandidate.id,
+      defenseScore,
+      isCertified: updatedCandidate.isCertified,
+      currentTier: updatedCandidate.currentTier,
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: isPassing
+        ? `Candidate ${updatedCandidate.fullName} passed evaluation and is certified for production work!`
+        : `Evaluation submitted. Candidate remains in Tier 2 for further training iterations.`,
+      data: {
+        candidateId: updatedCandidate.id,
+        isCertified: updatedCandidate.isCertified,
+        currentTier: updatedCandidate.currentTier,
+        defenseScore: evaluation.defenseScore,
+        logicalConsistency: evaluation.logicalConsistency,
+        rollingMaeScore: evaluation.rollingMaeScore,
+      },
+    });
+  } catch (error: any) {
+    if (error?.code === "P2025") {
+      res.status(404).json({
+        status: "error",
+        message: "Evaluation session record not found.",
+      });
+      return;
+    }
+    console.error("Evaluation Processing Error: ", error);
+    logger.error("Uromi viva evaluate failed", {
+      error: error instanceof Error ? error.message : String(error),
+      evaluationId: id,
+    });
+    res.status(500).json({
+      status: "error",
+      message: "Failed to process session evaluation ledger entry.",
+    });
+  }
+};

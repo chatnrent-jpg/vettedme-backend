@@ -9,12 +9,14 @@ import {
   getRubric,
   getSupervisorAnalytics,
   initializeVivaSession,
+  evaluateVivaSession,
   listLessons,
   updateProgress,
   validateAssessment,
 } from "./controller";
 import {
   startVivaSessionSchema,
+  evaluateVivaSessionSchema,
   validateAssessmentSchema,
 } from "./validation";
 
@@ -143,6 +145,17 @@ router.post(
   "/viva/initialize",
   validateBody(startVivaSessionSchema),
   initializeVivaSession
+);
+
+/**
+ * POST /api/rlhf/viva/:id/evaluate
+ * Allows a human Trainer of Trainers (ToT) to audit the transcript,
+ * score the candidate's defense logic, and finalize certification.
+ */
+router.post(
+  "/viva/:id/evaluate",
+  validateBody(evaluateVivaSessionSchema),
+  evaluateVivaSession
 );
 
 export default router;

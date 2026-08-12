@@ -178,3 +178,29 @@ export function parseStartVivaSessionBody(body: unknown): StartVivaSessionBody {
   }
   return parsed.data.body;
 }
+
+/**
+ * ToT sign-off: grade Tier 2 viva defense and optionally certify for production.
+ * Zod middleware expects `{ body, params }` (same pattern as other RLHF validators).
+ */
+export const evaluateVivaSessionSchema = z.object({
+  body: z.object({
+    defenseScore: z
+      .number()
+      .min(0, "Defense score must be a number between 0 and 100.")
+      .max(100, "Defense score must be a number between 0 and 100."),
+    logicalConsistency: z
+      .number()
+      .min(0, "Logical consistency must be between 0 and 100.")
+      .max(100, "Logical consistency must be between 0 and 100.")
+      .optional()
+      .default(50),
+    supervisorNotes: z.string().optional(),
+  }),
+  params: z.object({
+    id: z.string().uuid("Evaluation id must be a valid UUID"),
+  }),
+});
+
+export type EvaluateVivaSessionInput = z.infer<typeof evaluateVivaSessionSchema>;
+export type EvaluateVivaSessionBody = EvaluateVivaSessionInput["body"];
