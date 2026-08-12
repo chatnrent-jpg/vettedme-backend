@@ -93,7 +93,10 @@ export function initVivaSocketServer(server: HttpServer) {
           event: 'AUDITOR_CHALLENGE_INIT',
           toneAnchor: persona.toneAnchor,
           critiqueFocus: persona.critiqueFocus,
-          message: `System Calibration Complete. Initializing direct audit critique regarding your Tier 1 MAE score of ${evaluation.rollingMaeScore}.`,
+          failureCaseTitle: persona.failureCaseTitle,
+          modelOutputAnomaly: persona.modelOutputAnomaly,
+          expectedRaterAction: persona.expectedRaterAction,
+          message: `System Calibration Complete. Initializing direct audit critique regarding your Tier 1 MAE score of ${evaluation.rollingMaeScore}. Failure case locked: ${persona.failureCaseTitle}.`,
         })
       );
 

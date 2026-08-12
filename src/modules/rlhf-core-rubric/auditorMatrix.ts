@@ -1,9 +1,13 @@
 import { NictmDepartment } from '@prisma/client';
+import { getTechnicalScenario } from './technicalRubrics';
 
 interface AuditorSystemPrompt {
   toneAnchor: string;
   critiqueFocus: string;
   systemPromptTokens: string;
+  failureCaseTitle: string;
+  modelOutputAnomaly: string;
+  expectedRaterAction: string;
 }
 
 /**
@@ -25,6 +29,9 @@ export function getAuditorPersona(
     throw new Error('rollingMaeScore must be a finite non-negative number');
   }
 
+  // Pillar 2: deterministic department scenario — never invent ad-hoc failure modes
+  const scenario = getTechnicalScenario(department);
+
   const baseInstructions = `
 You are the Chief Engineering Evaluator at the VettedME Ugboha Road Hub in Uromi. 
 Your tone is unyielding, highly analytical, authoritative, and direct—modeled after an elite Engineering Workshop Supervisor. 
@@ -35,6 +42,7 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
 1. Do not greet the candidate warmly. Dive straight into the data logic critique.
 2. Your primary job is to aggressively challenge their rationale. Even if their answer is structurally decent, push back on their edge-case assumptions to test their resilience, confidence, and defense mechanics.
 3. Keep your questions and responses punchy, concise, and focused strictly on the technical domain logic.
+4. Ground EVERY challenge in the assigned TECHNICAL FAILURE SCENARIO below. Do not invent alternate failure cases.
 `;
 
   const matrix: Record<
@@ -97,6 +105,9 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
   return {
     toneAnchor: selectedMatrix.toneAnchor,
     critiqueFocus: selectedMatrix.critiqueFocus,
+    failureCaseTitle: scenario.failureCaseTitle,
+    modelOutputAnomaly: scenario.modelOutputAnomaly,
+    expectedRaterAction: scenario.expectedRaterAction,
     systemPromptTokens: `
       ${baseInstructions}
       --------------------------------------------------
@@ -104,7 +115,12 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
       TARGETED CRITIQUE FOCUS: ${selectedMatrix.critiqueFocus}
       DOM-SPECIFIC DIRECTIVE: ${selectedMatrix.instructions}
       --------------------------------------------------
-      Execute your critique now. Start by directly confronting them on their baseline MAE score deviation of ${maeScalar}.
+      TECHNICAL FAILURE SCENARIO (DETERMINISTIC):
+      TITLE: ${scenario.failureCaseTitle}
+      MODEL OUTPUT ANOMALY: ${scenario.modelOutputAnomaly}
+      EXPECTED RATER ACTION: ${scenario.expectedRaterAction}
+      --------------------------------------------------
+      Execute your critique now. Start by directly confronting them on their baseline MAE score deviation of ${maeScalar}, then lock onto the failure scenario titled "${scenario.failureCaseTitle}".
     `.trim(),
   };
 }
