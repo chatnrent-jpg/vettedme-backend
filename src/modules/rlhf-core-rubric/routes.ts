@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
+import { ZodTypeAny } from "zod";
 import { authenticate } from "../../middleware/auth";
 import {
   getLessonBySlug,
@@ -7,28 +8,48 @@ import {
   getPreferencePairs,
   getRubric,
   getSupervisorAnalytics,
+  initializeVivaSession,
   listLessons,
   updateProgress,
   validateAssessment,
 } from "./controller";
-import { validateAssessmentSchema } from "./validation";
+import {
+  startVivaSessionSchema,
+  validateAssessmentSchema,
+} from "./validation";
 
 const router = Router();
 
-// Middleware helper wrapper to catch schema validation parsing exceptions
-const validateBody = (schema: typeof validateAssessmentSchema) => {
+/**
+ * Zod body validator — assigns parsed body (so .default() values apply).
+ * Matches Uromi blueprint validate() middleware shape.
+ */
+const validateBody = (schema: ZodTypeAny) => {
   return async (
     req: Request,
     res: Response,
     next: NextFunction
   ): Promise<void> => {
     try {
-      await schema.parseAsync({ body: req.body });
+      const parsed = await schema.parseAsync({
+        body: req.body,
+        query: req.query,
+        params: req.params,
+      });
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "body" in (parsed as Record<string, unknown>)
+      ) {
+        req.body = (parsed as { body: unknown }).body;
+      }
       next();
     } catch (error: any) {
       const issues = error?.issues || error?.errors || [];
       res.status(400).json({
+        status: "error",
         error: "Validation failed",
+        errors: issues,
         details: issues.map(
           (e: any) => `${(e.path || []).join(".")}: ${e.message}`
         ),
@@ -112,5 +133,16 @@ router.post("/progress", authenticate, updateProgress);
 // Administrative Endpoint: GET /api/v1/modules/rlhf-core-rubric/analytics
 // Auth middleware + ADMIN role check inside getSupervisorAnalytics
 router.get("/analytics", authenticate, getSupervisorAnalytics);
+
+/**
+ * POST /api/v1/modules/rlhf-core-rubric/viva/initialize
+ * ToT registers a student at a physical Ugboha Road workstation and boots Tier 2.
+ * (Blueprint alias path: /api/rlhf/viva/initialize — use module mount above.)
+ */
+router.post(
+  "/viva/initialize",
+  validateBody(startVivaSessionSchema),
+  initializeVivaSession
+);
 
 export default router;

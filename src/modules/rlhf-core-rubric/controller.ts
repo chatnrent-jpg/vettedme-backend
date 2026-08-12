@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import readline from "readline";
-import { AIStatus } from "@prisma/client";
+import { AIStatus, EvaluationTier, NictmDepartment } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { asyncHandler, AppError } from "../../middleware/errorHandler";
 import { logger } from "../../utils/logger";
@@ -959,5 +959,126 @@ export const getSupervisorAnalytics = async (
     res
       .status(500)
       .json({ error: "Failed to extract administrative analytics data." });
+  }
+};
+
+/**
+ * POST /api/v1/modules/rlhf-core-rubric/viva/initialize
+ * Boots a Tier 2 Interactive Viva session for a candidate at a physical Uromi workstation.
+ * Body validated by startVivaSessionSchema (Zod) before this handler runs.
+ */
+export const initializeVivaSession = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const {
+    fullName,
+    email,
+    phoneNumber,
+    department,
+    isNictmStudent,
+    matricNumber,
+    stationNumber,
+    rollingMaeScore,
+  } = req.body as {
+    fullName: string;
+    email: string;
+    phoneNumber: string;
+    department: NictmDepartment;
+    isNictmStudent: boolean;
+    matricNumber?: string;
+    stationNumber: number;
+    rollingMaeScore: number;
+  };
+
+  try {
+    // 1. Ensure the physical workstation is registered and active
+    let workstation = await prisma.workstation.findUnique({
+      where: { stationNumber },
+    });
+
+    if (!workstation) {
+      // Auto-provision workstation row layouts on first local hardware pass
+      const rowMapping = stationNumber <= 15 ? "ROW_A" : "ROW_B";
+      workstation = await prisma.workstation.create({
+        data: {
+          stationNumber,
+          rowLocation: rowMapping,
+          starlinkStreamId: `ugboha-starlink-pipe-${rowMapping.toLowerCase()}`,
+        },
+      });
+    } else if (!workstation.isActive) {
+      res.status(409).json({
+        status: "error",
+        message: `Station ${stationNumber} is inactive on the Ugboha Road grid.`,
+      });
+      return;
+    }
+
+    // 2. Upsert candidate linked to NICTM academic footprint
+    const candidate = await prisma.candidate.upsert({
+      where: { email },
+      update: {
+        fullName,
+        phoneNumber,
+        department,
+        isNictmStudent: Boolean(isNictmStudent),
+        matricNumber: matricNumber ?? null,
+        currentTier: EvaluationTier.TIER_2_INTERACTIVE_VIVA,
+      },
+      create: {
+        fullName,
+        email,
+        phoneNumber,
+        department,
+        isNictmStudent: isNictmStudent ?? true,
+        matricNumber: matricNumber ?? null,
+        currentTier: EvaluationTier.TIER_2_INTERACTIVE_VIVA,
+      },
+    });
+
+    // 3. Placeholder evaluation record for this dynamic session
+    const evaluation = await prisma.candidateEvaluation.create({
+      data: {
+        candidateId: candidate.id,
+        workstationId: workstation.id,
+        rollingMaeScore,
+        defenseScore: 0.0,
+        logicalConsistency: 0.0,
+        aiAuditorTranscript: {
+          sessionState: "INITIALIZED",
+          systemCalibration: `AUDITOR_TARGET_${department}`,
+          history: [],
+        },
+      },
+    });
+
+    logger.info("Uromi viva session initialized", {
+      candidateId: candidate.id,
+      evaluationId: evaluation.id,
+      stationNumber,
+      department,
+    });
+
+    res.status(201).json({
+      status: "success",
+      message: `Trust pipeline session initialized securely at Station ${stationNumber} on Ugboha Road.`,
+      data: {
+        candidateId: candidate.id,
+        evaluationId: evaluation.id,
+        streamRoute: workstation.starlinkStreamId,
+      },
+    });
+  } catch (error: any) {
+    console.error("Uromi Infrastructure Log Error: ", error);
+    logger.error("Uromi viva initialize failed", {
+      error: error instanceof Error ? error.message : String(error),
+      email,
+      stationNumber,
+    });
+    res.status(500).json({
+      status: "error",
+      message: "Internal infrastructure linkage failed.",
+    });
   }
 };
