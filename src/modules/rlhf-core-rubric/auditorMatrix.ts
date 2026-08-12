@@ -115,10 +115,13 @@ CRITICAL BEHAVIORAL INSTRUCTIONS:
       TARGETED CRITIQUE FOCUS: ${selectedMatrix.critiqueFocus}
       DOM-SPECIFIC DIRECTIVE: ${selectedMatrix.instructions}
       --------------------------------------------------
-      TECHNICAL FAILURE SCENARIO (DETERMINISTIC):
-      TITLE: ${scenario.failureCaseTitle}
-      MODEL OUTPUT ANOMALY: ${scenario.modelOutputAnomaly}
-      EXPECTED RATER ACTION: ${scenario.expectedRaterAction}
+==================================================
+CRITICAL EVALUATION CASE STUDY:
+Failure Scenario Title: ${scenario.failureCaseTitle}
+The Anomaly Present in Data: ${scenario.modelOutputAnomaly}
+What a Competent Rater MUST Do: ${scenario.expectedRaterAction}
+==================================================
+Confront the candidate aggressively on whether they caught this specific anomaly. If they failed to account for it in Tier 1, challenge their analytical competence directly.
       --------------------------------------------------
       Execute your critique now. Start by directly confronting them on their baseline MAE score deviation of ${maeScalar}, then lock onto the failure scenario titled "${scenario.failureCaseTitle}".
     `.trim(),
