@@ -1,4 +1,5 @@
 import express, { Express } from 'express';
+import http from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
@@ -192,19 +193,22 @@ app.use((req, res) => {
 });
 
 // ============================================================================
-// SERVER STARTUP
+// SERVER STARTUP — native HTTP wrapper for custom WebSocket upgrades
 // ============================================================================
 
-const server = app.listen(PORT, () => {
+const server = http.createServer(app);
+
+// Inject and activate the real-time Uromi WebSocket pipe layer (before listen)
+initVivaSocketServer(server);
+
+server.listen(PORT, () => {
   logger.info(`🚀 VETTED Backend running on port ${PORT}`);
   logger.info(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`🔐 Security headers: ENABLED`);
   logger.info(`⚡ VettedME Engine: READY`);
   logger.info(`💰 VettedPay Engine: READY`);
+  logger.info(`🌅 Ugboha Road Hub network pipeline fully hot-wired and listening.`);
 });
-
-// Tier 2 Interactive Viva — Starlink duplex WebSocket (Pillar 3 on seeded data)
-initVivaSocketServer(server);
 
 // Graceful Shutdown
 process.on('SIGTERM', () => {
