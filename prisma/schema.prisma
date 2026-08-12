@@ -1288,5 +1288,115 @@ enum AIStatus {
 }
 
 // ============================================================================
+// UROMI / NICTM TALENT PIPELINE (Ugboha Road facility)
+// Physical workstations + candidate viva evaluations + telemetry audit
+// ============================================================================
+
+/// Specialized academic pipelines from NICTM (+ diaspora / non-NICTM locals)
+enum NictmDepartment {
+  MECHATRONICS_ENGINEERING
+  COMPUTER_SCIENCE
+  CYBER_SECURITY_DATA_PROTECTION
+  CIVIL_ENGINEERING
+  QUANTITY_SURVEYING
+  BUILDING_TECHNOLOGY
+  EXTERNAL_TALENT
+}
+
+/// Track status through the 3 validation tiers
+enum EvaluationTier {
+  TIER_1_CALIBRATION
+  TIER_2_INTERACTIVE_VIVA
+  TIER_3_PRODUCTION_READY
+}
+
+/// Physical workstations tracking hardware telemetry on Ugboha Road
+model Workstation {
+  id               String                @id @default(uuid())
+  stationNumber    Int                   @unique
+  rowLocation      String // e.g., "ROW_A", "ROW_B"
+  starlinkStreamId String // Identifies the active routing pipe
+  isActive         Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+
+  evaluations CandidateEvaluation[]
+
+  @@index([isActive])
+  @@map("workstations")
+}
+
+/// Core profile tracking the local Uromi talent pipeline
+model Candidate {
+  id          String @id @default(uuid())
+  fullName    String
+  email       String @unique
+  phoneNumber String
+  hometown    String @default("Uromi")
+
+  // Academic anchoring
+  isNictmStudent Boolean         @default(true)
+  department     NictmDepartment
+  matricNumber   String?         @unique // Nullable if EXTERNAL_TALENT / diaspora
+
+  // Current pipeline status
+  currentTier EvaluationTier @default(TIER_1_CALIBRATION)
+  isCertified Boolean         @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evaluations   CandidateEvaluation[]
+  telemetryLogs RaterTelemetry[]
+
+  @@index([department])
+  @@index([currentTier])
+  @@index([isCertified])
+  @@map("candidates")
+}
+
+/// Tier 2 tracking — how candidates defend their logic to the AI Auditor
+model CandidateEvaluation {
+  id            String   @id @default(uuid())
+  candidateId   String
+  workstationId String
+  sessionDate   DateTime @default(now())
+
+  // Performance metas
+  rollingMaeScore    Float // Mean Absolute Error delta from Tier 1
+  defenseScore       Float // How well they stood their ground (0.0 - 100.0)
+  logicalConsistency Float // Audit tracking consistency score
+
+  // Transcripts & AI state
+  vivaAudioUrl        String? // Saved stream path on local secure storage
+  aiAuditorTranscript Json // Step-by-step back-and-forth log matrix
+  supervisorNotes     String? // Manual ToT sign-off notes
+
+  candidate   Candidate   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  workstation Workstation @relation(fields: [workstationId], references: [id])
+
+  @@index([candidateId])
+  @@index([workstationId])
+  @@index([sessionDate])
+  @@map("candidate_evaluations")
+}
+
+/// Historical streaming telemetry for audit compliance
+model RaterTelemetry {
+  id          String   @id @default(uuid())
+  candidateId String
+  tier        String   @default("TIER_2")
+  actionType  String // e.g., "CRITIQUE_PUSHBACK", "LOGIC_REVISION"
+  metricDelta Float // Variance recording
+  timestamp   DateTime @default(now())
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+  @@index([tier])
+  @@index([timestamp])
+  @@map("rater_telemetry")
+}
+
+// ============================================================================
 // END OF SCHEMA
 // ============================================================================
