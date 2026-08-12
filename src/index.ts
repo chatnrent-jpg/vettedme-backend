@@ -17,6 +17,7 @@ import complianceRouter from './routes/compliance.routes';
 import auditRouter from './routes/audit.routes';
 import leadRouter from './routes/lead.routes';
 import rlhfRouter from './modules/rlhf-core-rubric/router';
+import { initVivaSocketServer } from './modules/rlhf-core-rubric/vivaStreamController';
 
 dotenv.config();
 
@@ -201,6 +202,9 @@ const server = app.listen(PORT, () => {
   logger.info(`⚡ VettedME Engine: READY`);
   logger.info(`💰 VettedPay Engine: READY`);
 });
+
+// Tier 2 Interactive Viva — Starlink duplex WebSocket (Pillar 3 on seeded data)
+initVivaSocketServer(server);
 
 // Graceful Shutdown
 process.on('SIGTERM', () => {
