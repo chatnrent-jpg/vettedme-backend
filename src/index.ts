@@ -16,7 +16,7 @@ import disputeRouter from './routes/dispute.routes';
 import complianceRouter from './routes/compliance.routes';
 import auditRouter from './routes/audit.routes';
 import leadRouter from './routes/lead.routes';
-import rlhfRouter from './modules/rlhf-core-rubric/routes';
+import rlhfRouter from './modules/rlhf-core-rubric/router';
 
 dotenv.config();
 
@@ -99,12 +99,15 @@ app.get('/', (req, res) => {
     modules: {
       rlhfCoreRubric: {
         base: '/api/v1/modules/rlhf-core-rubric',
+        uromiAlias: '/api/rlhf',
         lessons: '/api/v1/modules/rlhf-core-rubric/lessons',
         lessonExample:
           '/api/v1/modules/rlhf-core-rubric/lessons/03-core-rubric-dimensions',
         dataset:
           '/api/v1/modules/rlhf-core-rubric/dataset/preference-pairs?mode=candidate',
         validate: 'POST /api/v1/modules/rlhf-core-rubric/validate',
+        vivaInitialize: 'POST /api/rlhf/viva/initialize',
+        analytics: 'GET /api/v1/modules/rlhf-core-rubric/analytics',
       },
     },
     ui: {
@@ -168,7 +171,10 @@ app.use('/api/v1/disputes', disputeRouter);
 app.use('/api/v1/compliance', complianceRouter);
 app.use('/api/v1/audit', auditRouter);
 app.use('/api/v1/leads', leadRouter);
+// Legacy / full module path (lessons, validate, analytics, viva)
 app.use('/api/v1/modules/rlhf-core-rubric', rlhfRouter);
+// Uromi Trust Infrastructure alias — Cloudflare tunnel / ToT terminals
+app.use('/api/rlhf', rlhfRouter);
 
 // ============================================================================
 // ERROR HANDLING
