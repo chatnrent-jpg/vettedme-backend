@@ -8,6 +8,7 @@ import {
   getPreferencePairs,
   getRubric,
   getSupervisorAnalytics,
+  getLiveAnalyticsFeed,
   initializeVivaSession,
   evaluateVivaSession,
   listLessons,
@@ -157,5 +158,11 @@ router.post(
   validateBody(evaluateVivaSessionSchema),
   evaluateVivaSession
 );
+
+/**
+ * GET /api/rlhf/analytics/live-feed
+ * ToT head-desk telemetry matrix — polls candidate/workstation evaluation rows.
+ */
+router.get("/analytics/live-feed", getLiveAnalyticsFeed);
 
 export default router;

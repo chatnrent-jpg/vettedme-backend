@@ -110,6 +110,7 @@ app.get('/', (req, res) => {
         validate: 'POST /api/v1/modules/rlhf-core-rubric/validate',
         vivaInitialize: 'POST /api/rlhf/viva/initialize',
         vivaStream: 'WS /api/rlhf/viva/stream?evaluationId=<uuid>',
+        analyticsLiveFeed: 'GET /api/rlhf/analytics/live-feed',
         analytics: 'GET /api/v1/modules/rlhf-core-rubric/analytics',
       },
     },

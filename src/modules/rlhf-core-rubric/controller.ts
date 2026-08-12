@@ -1168,3 +1168,52 @@ export const evaluateVivaSession = async (
     });
   }
 };
+
+/**
+ * GET /api/rlhf/analytics/live-feed
+ * ToT command-center feed: workstation + candidate + latest evaluation scores.
+ * No auth on workshop floor terminals (same pattern as viva initialize / stream).
+ */
+export const getLiveAnalyticsFeed = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const evaluations = await prisma.candidateEvaluation.findMany({
+      include: {
+        candidate: true,
+        workstation: true,
+      },
+      orderBy: [{ sessionDate: "desc" }],
+    });
+
+    const data = evaluations.map((row) => ({
+      id: row.id,
+      fullName: row.candidate.fullName,
+      department: row.candidate.department,
+      currentTier: row.candidate.currentTier,
+      rollingMaeScore: row.rollingMaeScore,
+      defenseScore: row.defenseScore,
+      isCertified: row.candidate.isCertified,
+      stationNumber: row.workstation.stationNumber,
+      rowLocation: row.workstation.rowLocation,
+    }));
+
+    res.status(200).json({
+      status: "success",
+      data,
+      meta: {
+        count: data.length,
+        generatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error("Uromi live analytics feed failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    res.status(500).json({
+      status: "error",
+      message: "Failed to stream analytics endpoint data matrix.",
+    });
+  }
+};
